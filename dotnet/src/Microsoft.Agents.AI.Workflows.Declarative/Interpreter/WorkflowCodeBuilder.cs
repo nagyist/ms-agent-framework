@@ -45,7 +45,7 @@ internal sealed class WorkflowCodeBuilder : IModelBuilder<string>
         this._edges.Add(new EdgeTemplate(source.Id, target.Id, condition).TransformText());
     }
 
-    private void HandelAction(IModeledAction action)
+    private void HandleAction(IModeledAction action)
     {
         // All templates are based on "CodeTemplate"
         switch (action)
