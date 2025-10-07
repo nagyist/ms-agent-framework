@@ -98,6 +98,10 @@ internal sealed class WorkflowHarness(Workflow workflow, string runId)
                         exitLoop = true;
                     }
                     break;
+                case ExecutorFailedEvent failedEvent:
+                    Console.WriteLine($"FAILURE: {failedEvent.Data?.Message}");
+                    exitLoop = true;
+                    break;
                 case DeclarativeActionInvokedEvent actionInvokeEvent:
                     Console.WriteLine($"ACTION: {actionInvokeEvent.ActionId} [{actionInvokeEvent.ActionType}]");
                     break;

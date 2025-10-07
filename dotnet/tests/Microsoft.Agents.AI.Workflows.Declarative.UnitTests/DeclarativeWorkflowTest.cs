@@ -294,7 +294,6 @@ public sealed class DeclarativeWorkflowTest(ITestOutputHelper output) : Workflow
                     this.Output.WriteLine($"MESSAGE: {messageEvent.Response.Messages[0].Text.Trim()}");
                     break;
                 case RequestInfoEvent:
-                    await run.EndRunAsync();
                     exitLoop = true;
                     break;
             }
