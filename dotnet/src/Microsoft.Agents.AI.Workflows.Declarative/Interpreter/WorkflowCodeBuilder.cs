@@ -39,8 +39,8 @@ internal sealed class WorkflowCodeBuilder : IModelBuilder<string>
     {
         Debug.WriteLine($"> CONNECT: {source.Id} => {target.Id}{(condition is null ? string.Empty : " (?)")}");
 
-        this.HandelAction(source);
-        this.HandelAction(target);
+        this.HandleAction(source);
+        this.HandleAction(target);
 
         this._edges.Add(new EdgeTemplate(source.Id, target.Id, condition).TransformText());
     }
