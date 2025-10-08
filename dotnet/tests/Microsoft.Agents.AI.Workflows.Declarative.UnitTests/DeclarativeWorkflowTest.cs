@@ -14,6 +14,7 @@ using Microsoft.Bot.ObjectModel;
 using Microsoft.Extensions.AI;
 using Moq;
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace Microsoft.Agents.AI.Workflows.Declarative.UnitTests;
 
@@ -293,15 +294,22 @@ public sealed class DeclarativeWorkflowTest(ITestOutputHelper output) : Workflow
                 case AgentRunResponseEvent messageEvent:
                     this.Output.WriteLine($"MESSAGE: {messageEvent.Response.Messages[0].Text.Trim()}");
                     break;
+                case ExecutorFailedEvent failureEvent:
+                    Console.WriteLine($"Executor failed [{failureEvent.ExecutorId}]: {failureEvent.Data?.Message ?? "Unknown"}");
+                    break;
+                case WorkflowErrorEvent errorEvent:
+                    throw errorEvent.Data as Exception ?? new XunitException("Unexpected failure...");
                 case RequestInfoEvent:
                     exitLoop = true;
                     break;
             }
+
             if (exitLoop)
             {
                 break;
             }
         }
+
         this.WorkflowEventCounts = this.WorkflowEvents.GroupBy(e => e.GetType()).ToDictionary(e => e.Key, e => e.Count());
     }
 
