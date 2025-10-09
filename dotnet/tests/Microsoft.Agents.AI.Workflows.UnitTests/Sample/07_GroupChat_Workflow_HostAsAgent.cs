@@ -1,10 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
 namespace Microsoft.Agents.AI.Workflows.Sample;
@@ -27,7 +25,6 @@ internal static class Step7EntryPoint
                                    ?? update.AgentId
                                    ?? update.Role.ToString()
                                    ?? ChatRole.Assistant.ToString()}: {update.Text}";
-            Console.WriteLine(updateText);
             writer.WriteLine(updateText);
         }
     }

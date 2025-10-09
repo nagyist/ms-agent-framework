@@ -2,7 +2,6 @@
 
 using System;
 using System.Text.Json;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Shared.Diagnostics;
 
@@ -13,7 +12,7 @@ internal sealed class WorkflowThread : AgentThread
     public WorkflowThread(string workflowId, string? workflowName, string runId)
     {
         this.MessageStore = new();
-        this.RunId = Throw.IfNullOrEmpty(runId, nameof(runId));
+        this.RunId = Throw.IfNullOrEmpty(runId);
     }
 
     public WorkflowThread(JsonElement serializedThread, JsonSerializerOptions? jsonSerializerOptions = null)

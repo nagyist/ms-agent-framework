@@ -1,9 +1,9 @@
 # Get Started with Microsoft Agent Framework A2A
 
-Please install this package as the extra for `agent-framework`:
+Please install this package via pip:
 
 ```bash
-pip install agent-framework[a2a]
+pip install agent-framework-a2a --pre
 ```
 
 ## A2A Agent Integration
@@ -18,4 +18,3 @@ See the [A2A agent examples](https://github.com/microsoft/agent-framework/tree/m
 - Sending messages and receiving responses
 - Handling different content types (text, files, data)
 - Streaming responses and real-time interaction
-

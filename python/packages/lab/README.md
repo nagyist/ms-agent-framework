@@ -10,7 +10,6 @@ Lab modules are extensions to the core Agent Framework that fall into
 one of the following categories:
 
 1. Incubation of new features that may get incorporated by the core framework.
-1. Incubation of new features that may get incorporated by the core framework.
 2. Research prototypes built on the core framework.
 3. Benchmarks and experimentation tools.
 
@@ -45,10 +44,12 @@ This structure maintains a single PyPI package `agent-framework-lab` while suppo
 
 ## Installation
 
-Install the base lab package:
+Install from source:
 
 ```bash
-pip install agent-framework-lab
+git clone https://github.com/microsoft/agent-framework.git
+cd agent-framework/python/packages/lab
+pip install -e .
 ```
 
 For details on installing individual modules, see their respective README files listed above.

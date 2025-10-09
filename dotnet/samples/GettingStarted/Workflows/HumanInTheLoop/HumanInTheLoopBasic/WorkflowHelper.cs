@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.Threading.Tasks;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Agents.AI.Workflows.Reflection;
 
@@ -15,13 +14,13 @@ internal static class WorkflowHelper
     internal static ValueTask<Workflow<NumberSignal>> GetWorkflowAsync()
     {
         // Create the executors
-        InputPort numberInputPort = InputPort.Create<NumberSignal, int>("GuessNumber");
+        RequestPort numberRequestPort = RequestPort.Create<NumberSignal, int>("GuessNumber");
         JudgeExecutor judgeExecutor = new(42);
 
         // Build the workflow by connecting executors in a loop
-        return new WorkflowBuilder(numberInputPort)
-            .AddEdge(numberInputPort, judgeExecutor)
-            .AddEdge(judgeExecutor, numberInputPort)
+        return new WorkflowBuilder(numberRequestPort)
+            .AddEdge(numberRequestPort, judgeExecutor)
+            .AddEdge(judgeExecutor, numberRequestPort)
             .WithOutputFrom(judgeExecutor)
             .BuildAsync<NumberSignal>();
     }
@@ -54,21 +53,21 @@ internal sealed class JudgeExecutor() : ReflectingExecutor<JudgeExecutor>("Judge
         this._targetNumber = targetNumber;
     }
 
-    public async ValueTask HandleAsync(int message, IWorkflowContext context)
+    public async ValueTask HandleAsync(int message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         this._tries++;
         if (message == this._targetNumber)
         {
-            await context.YieldOutputAsync($"{this._targetNumber} found in {this._tries} tries!")
+            await context.YieldOutputAsync($"{this._targetNumber} found in {this._tries} tries!", cancellationToken)
                          .ConfigureAwait(false);
         }
         else if (message < this._targetNumber)
         {
-            await context.SendMessageAsync(NumberSignal.Below).ConfigureAwait(false);
+            await context.SendMessageAsync(NumberSignal.Below, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            await context.SendMessageAsync(NumberSignal.Above).ConfigureAwait(false);
+            await context.SendMessageAsync(NumberSignal.Above, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 }

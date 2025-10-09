@@ -3,14 +3,15 @@
   <PropertyGroup>
     <TargetFrameworks>$(ProjectsCoreTargetFrameworks)</TargetFrameworks>
     <TargetFrameworks Condition="'$(Configuration)' == 'Debug'">$(ProjectsCoreTargetFrameworks)</TargetFrameworks>
-    <NoWarn>$(NoWarn);IDE1006;IDE0130;NU1504</NoWarn>
     <RootNamespace>Microsoft.Agents.AI.Hosting.A2A</RootNamespace>
-    <VersionSuffix>alpha</VersionSuffix>
+    <VersionSuffix>preview</VersionSuffix>
   </PropertyGroup>
 
   <PropertyGroup>
     <InjectSharedThrow>true</InjectSharedThrow>
   </PropertyGroup>
+
+  <Import Project="$(RepoRoot)/dotnet/nuget/nuget-package.props" />
 
   <ItemGroup>
     <PackageReference Include="A2A" />
@@ -22,7 +23,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Agents.AI.Abstractions\Microsoft.Agents.AI.Abstractions.csproj" />
     <ProjectReference Include="..\Microsoft.Agents.AI.Hosting\Microsoft.Agents.AI.Hosting.csproj" />
-    <ProjectReference Include="..\Microsoft.Agents.AI.Runtime.Abstractions\Microsoft.Agents.AI.Runtime.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,4 +34,9 @@
     <InternalsVisibleTo Include="Microsoft.Agents.AI.Hosting.A2A.Tests" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- NuGet Package Settings -->
+    <Title>Microsoft Agent Framework Hosting A2A</Title>
+    <Description>Provides Microsoft Agent Framework support for hosting A2A agents.</Description>
+  </PropertyGroup>
 </Project>

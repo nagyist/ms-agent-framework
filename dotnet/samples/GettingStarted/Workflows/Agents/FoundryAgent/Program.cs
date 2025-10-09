@@ -1,7 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
-using System.Threading.Tasks;
 using Azure.AI.Agents.Persistent;
 using Azure.Identity;
 using Microsoft.Agents.AI;
@@ -25,13 +23,13 @@ public static class Program
         // Set up the Azure OpenAI client
         var endpoint = Environment.GetEnvironmentVariable("AZURE_FOUNDRY_PROJECT_ENDPOINT")
             ?? throw new InvalidOperationException("AZURE_FOUNDRY_PROJECT_ENDPOINT is not set.");
-        var model = Environment.GetEnvironmentVariable("AZURE_FOUNDRY_PROJECT_MODEL_ID") ?? "gpt-4o-mini";
+        var deploymentName = Environment.GetEnvironmentVariable("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME") ?? "gpt-4o-mini";
         var persistentAgentsClient = new PersistentAgentsClient(endpoint, new AzureCliCredential());
 
         // Create agents
-        AIAgent frenchAgent = await GetTranslationAgentAsync("French", persistentAgentsClient, model);
-        AIAgent spanishAgent = await GetTranslationAgentAsync("Spanish", persistentAgentsClient, model);
-        AIAgent englishAgent = await GetTranslationAgentAsync("English", persistentAgentsClient, model);
+        AIAgent frenchAgent = await GetTranslationAgentAsync("French", persistentAgentsClient, deploymentName);
+        AIAgent spanishAgent = await GetTranslationAgentAsync("Spanish", persistentAgentsClient, deploymentName);
+        AIAgent englishAgent = await GetTranslationAgentAsync("English", persistentAgentsClient, deploymentName);
 
         // Build the workflow by adding executors and connecting them
         var workflow = new WorkflowBuilder(frenchAgent)
@@ -40,7 +38,7 @@ public static class Program
             .Build();
 
         // Execute the workflow
-        StreamingRun run = await InProcessExecution.StreamAsync(workflow, new ChatMessage(ChatRole.User, "Hello World!"));
+        await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, new ChatMessage(ChatRole.User, "Hello World!"));
         // Must send the turn token to trigger the agents.
         // The agents are wrapped as executors. When they receive messages,
         // they will cache the messages and only start processing when they receive a TurnToken.

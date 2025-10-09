@@ -7,7 +7,7 @@ using Moq;
 namespace Microsoft.Agents.AI.UnitTests;
 
 /// <summary>
-/// Unit tests for the <see cref="OpenTelemetryAIAgentBuilderExtensions"/> class.
+/// Unit tests for the <see cref="AIAgentBuilderExtensions"/> class.
 /// </summary>
 public class OpenTelemetryAIAgentBuilderExtensionsTests
 {
@@ -18,8 +18,7 @@ public class OpenTelemetryAIAgentBuilderExtensionsTests
     public void UseOpenTelemetry_WithNullBuilder_ThrowsArgumentNullException()
     {
         // Act & Assert
-        Assert.Throws<ArgumentNullException>("builder", () =>
-            OpenTelemetryAIAgentBuilderExtensions.UseOpenTelemetry(null!));
+        Assert.Throws<ArgumentNullException>("builder", () => ((AIAgentBuilder)null!).UseOpenTelemetry());
     }
 
     /// <summary>
@@ -34,24 +33,6 @@ public class OpenTelemetryAIAgentBuilderExtensionsTests
 
         // Act
         var result = builder.UseOpenTelemetry().Build();
-
-        // Assert
-        Assert.IsType<OpenTelemetryAgent>(result);
-    }
-
-    /// <summary>
-    /// Verify that UseOpenTelemetry with logger factory works correctly.
-    /// </summary>
-    [Fact]
-    public void UseOpenTelemetry_WithLoggerFactory_UsesProvidedLoggerFactory()
-    {
-        // Arrange
-        var mockAgent = new Mock<AIAgent>();
-        using var loggerFactory = LoggerFactory.Create(builder => { });
-        var builder = new AIAgentBuilder(mockAgent.Object);
-
-        // Act
-        var result = builder.UseOpenTelemetry(loggerFactory).Build();
 
         // Assert
         Assert.IsType<OpenTelemetryAgent>(result);
@@ -131,7 +112,6 @@ public class OpenTelemetryAIAgentBuilderExtensionsTests
 
         // Act
         var result = builder.UseOpenTelemetry(
-            loggerFactory: loggerFactory,
             sourceName: SourceName,
             configure: agent =>
             {

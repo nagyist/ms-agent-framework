@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,26 +14,25 @@ namespace Microsoft.Agents.AI.Workflows;
 /// A <see cref="Workflow"/> run instance supporting a streaming form of receiving workflow events, and providing
 /// a mechanism to send responses back to the workflow.
 /// </summary>
-public sealed class StreamingRun
+public sealed class StreamingRun : IAsyncDisposable
 {
-    private TaskCompletionSource<object>? _waitForResponseSource;
-    private readonly ISuperStepRunner _stepRunner;
+    private readonly AsyncRunHandle _runHandle;
 
-    /// <summary>
-    /// Gets a value indicating whether there are any outstanding <see cref="ExternalRequest"/>s for which a
-    /// <see cref="ExternalResponse"/> has not been sent.
-    /// </summary>
-    public bool HasUnservicedRequests => this._stepRunner.HasUnservicedRequests;
-
-    internal StreamingRun(ISuperStepRunner stepRunner)
+    internal StreamingRun(AsyncRunHandle runHandle)
     {
-        this._stepRunner = Throw.IfNull(stepRunner);
+        this._runHandle = Throw.IfNull(runHandle);
     }
 
     /// <summary>
     /// A unique identifier for the run. Can be provided at the start of the run, or auto-generated.
     /// </summary>
-    public string RunId => this._stepRunner.RunId;
+    public string RunId => this._runHandle.RunId;
+
+    /// <summary>
+    /// Gets the current execution status of the workflow run.
+    /// </summary>
+    public ValueTask<RunStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        => this._runHandle.GetStatusAsync(cancellationToken);
 
     /// <summary>
     /// Asynchronously sends the specified response to the external system and signals completion of the current
@@ -44,11 +42,7 @@ public sealed class StreamingRun
     /// <param name="response">The <see cref="ExternalResponse"/> to send. Must not be <c>null</c>.</param>
     /// <returns>A <see cref="ValueTask"/> that represents the asynchronous send operation.</returns>
     public ValueTask SendResponseAsync(ExternalResponse response)
-    {
-        this._waitForResponseSource?.TrySetResult(new());
-
-        return this._stepRunner.EnqueueResponseAsync(response);
-    }
+        => this._runHandle.EnqueueResponseAsync(response);
 
     /// <summary>
     /// Attempts to send the specified message asynchronously and returns a value indicating whether the operation was
@@ -60,18 +54,11 @@ public sealed class StreamingRun
     /// <returns>A <see cref="ValueTask{Boolean}"/> that represents the asynchronous send operation. It's
     /// <see cref="ValueTask{Boolean}.Result"/> is <see langword="true"/> if the message was sent
     /// successfully; otherwise, <see langword="false"/>.</returns>
-    public async ValueTask<bool> TrySendMessageAsync<TMessage>(TMessage message)
-    {
-        Throw.IfNull(message);
+    public ValueTask<bool> TrySendMessageAsync<TMessage>(TMessage message)
+        => this._runHandle.EnqueueMessageAsync(message);
 
-        if (message is ExternalResponse response)
-        {
-            await this.SendResponseAsync(response).ConfigureAwait(false);
-            return true;
-        }
-
-        return await this._stepRunner.EnqueueMessageAsync(message).ConfigureAwait(false);
-    }
+    internal ValueTask<bool> TrySendMessageUntypedAsync(object message, Type? declaredType = null)
+        => this._runHandle.EnqueueMessageUntypedAsync(message, declaredType);
 
     /// <summary>
     /// Asynchronously streams workflow events as they occur during workflow execution.
@@ -79,92 +66,24 @@ public sealed class StreamingRun
     /// <remarks>This method yields <see cref="WorkflowEvent"/> instances in real time as the workflow
     /// progresses. The stream completes when a <see cref="RequestHaltEvent"/> is encountered. Events are
     /// delivered in the order they are raised.</remarks>
-    /// <param name="cancellation">A <see cref="CancellationToken"/> that can be used to cancel the streaming operation. If cancellation is
-    /// requested, the stream will end and no further events will be yielded.</param>
+    /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the streaming operation. If cancellation is
+    /// requested, the stream will end and no further events will be yielded, but this will not cancel the workflow execution.</param>
     /// <returns>An asynchronous stream of <see cref="WorkflowEvent"/> objects representing significant workflow state changes.
     /// The stream ends when the workflow completes or when cancellation is requested.</returns>
     public IAsyncEnumerable<WorkflowEvent> WatchStreamAsync(
-        CancellationToken cancellation = default)
-        => this.WatchStreamAsync(blockOnPendingRequest: true, cancellation);
+        CancellationToken cancellationToken = default)
+        => this.WatchStreamAsync(blockOnPendingRequest: true, cancellationToken);
 
-    internal async IAsyncEnumerable<WorkflowEvent> WatchStreamAsync(
+    internal IAsyncEnumerable<WorkflowEvent> WatchStreamAsync(
         bool blockOnPendingRequest,
-        [EnumeratorCancellation] CancellationToken cancellation = default)
+        CancellationToken cancellationToken = default)
+        => this._runHandle.TakeEventStreamAsync(blockOnPendingRequest, cancellationToken);
+
+    /// <inheritdoc/>
+    public ValueTask DisposeAsync()
     {
-        List<WorkflowEvent> eventSink = [];
-
-        this._stepRunner.WorkflowEvent += OnWorkflowEvent;
-
-        try
-        {
-            do
-            {
-                // Drain SuperSteps while there are steps to run
-                await this._stepRunner.RunSuperStepAsync(cancellation).ConfigureAwait(false);
-                if (cancellation.IsCancellationRequested)
-                {
-                    yield break; // Exit if cancellation is requested
-                }
-
-                bool hadCompletionEvent = false;
-                foreach (WorkflowEvent raisedEvent in Interlocked.Exchange(ref eventSink, []))
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        yield break; // Exit if cancellation is requested
-                    }
-
-                    // TODO: Do we actually want to interpret this as a termination request?
-                    if (raisedEvent is RequestHaltEvent)
-                    {
-                        hadCompletionEvent = true;
-                    }
-                    else
-                    {
-                        yield return raisedEvent;
-                    }
-                }
-
-                if (hadCompletionEvent)
-                {
-                    // If we had a completion event, we are done.
-                    yield break;
-                }
-
-                // If we do not have any actions to take on the Workflow, but have unprocessed
-                // requests, wait for the responses to come in before exiting out of the workflow
-                // execution.
-                if (blockOnPendingRequest &&
-                    !this._stepRunner.HasUnprocessedMessages &&
-                    this._stepRunner.HasUnservicedRequests)
-                {
-                    this._waitForResponseSource ??= new();
-
-                    using CancellationTokenRegistration registration = cancellation.Register(() => this._waitForResponseSource?.SetResult(new()));
-
-                    await this._waitForResponseSource.Task.ConfigureAwait(false);
-                    this._waitForResponseSource = null;
-                }
-            } while (this._stepRunner.HasUnprocessedMessages);
-        }
-        finally
-        {
-            this._stepRunner.WorkflowEvent -= OnWorkflowEvent;
-        }
-
-        void OnWorkflowEvent(object? sender, WorkflowEvent e)
-        {
-            eventSink.Add(e);
-        }
+        return this._runHandle.DisposeAsync();
     }
-
-    /// <summary>
-    /// Signals the end of the current run and initiates any necessary cleanup operations asynchronously.
-    /// Enables the underlying Workflow instance to be reused in subsequent runs.
-    /// </summary>
-    /// <returns>A ValueTask that represents the asynchronous operation. The task is complete when the run has
-    /// ended and cleanup is finished.</returns>
-    public ValueTask EndRunAsync() => this._stepRunner.RequestEndRunAsync();
 }
 
 /// <summary>
@@ -182,14 +101,14 @@ public static class StreamingRunExtensions
     /// <param name="eventCallback">An optional callback function invoked for each <see cref="WorkflowEvent"/> received from the stream.
     /// The callback can return a response object to be sent back to the workflow, or <see langword="null"/> if no response
     /// is required.</param>
-    /// <param name="cancellation">A <see cref="CancellationToken"/> to observe while waiting for events. </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask"/> that represents the asynchronous operation. The task completes when the workflow
     /// execution stream is fully processed.</returns>
-    public static async ValueTask RunToCompletionAsync(this StreamingRun handle, Func<WorkflowEvent, ExternalResponse?>? eventCallback = null, CancellationToken cancellation = default)
+    public static async ValueTask RunToCompletionAsync(this StreamingRun handle, Func<WorkflowEvent, ExternalResponse?>? eventCallback = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(handle);
 
-        await foreach (WorkflowEvent @event in handle.WatchStreamAsync(cancellation).ConfigureAwait(false))
+        await foreach (WorkflowEvent @event in handle.WatchStreamAsync(cancellationToken).ConfigureAwait(false))
         {
             ExternalResponse? maybeResponse = eventCallback?.Invoke(@event);
             if (maybeResponse is not null)

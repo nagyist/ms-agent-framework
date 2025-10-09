@@ -21,15 +21,15 @@ public class FunctionExecutor<TInput>(string id,
     {
         return RunActionAsync;
 
-        ValueTask RunActionAsync(TInput input, IWorkflowContext workflowContext, CancellationToken cancellation)
+        ValueTask RunActionAsync(TInput input, IWorkflowContext workflowContext, CancellationToken cancellationToken)
         {
-            handlerSync(input, workflowContext, cancellation);
+            handlerSync(input, workflowContext, cancellationToken);
             return default;
         }
     }
 
     /// <inheritdoc/>
-    public override ValueTask HandleAsync(TInput message, IWorkflowContext context) => handlerAsync(message, context, default);
+    public override ValueTask HandleAsync(TInput message, IWorkflowContext context, CancellationToken cancellationToken) => handlerAsync(message, context, cancellationToken);
 
     /// <summary>
     /// Creates a new instance of the <see cref="FunctionExecutor{TInput}"/> class.
@@ -57,15 +57,15 @@ public class FunctionExecutor<TInput, TOutput>(string id,
     {
         return RunFuncAsync;
 
-        ValueTask<TOutput> RunFuncAsync(TInput input, IWorkflowContext workflowContext, CancellationToken cancellation)
+        ValueTask<TOutput> RunFuncAsync(TInput input, IWorkflowContext workflowContext, CancellationToken cancellationToken)
         {
-            TOutput result = handlerSync(input, workflowContext, cancellation);
+            TOutput result = handlerSync(input, workflowContext, cancellationToken);
             return new ValueTask<TOutput>(result);
         }
     }
 
     /// <inheritdoc/>
-    public override ValueTask<TOutput> HandleAsync(TInput message, IWorkflowContext context) => handlerAsync(message, context, default);
+    public override ValueTask<TOutput> HandleAsync(TInput message, IWorkflowContext context, CancellationToken cancellationToken) => handlerAsync(message, context, cancellationToken);
 
     /// <summary>
     /// Creates a new instance of the <see cref="FunctionExecutor{TInput,TOutput}"/> class.

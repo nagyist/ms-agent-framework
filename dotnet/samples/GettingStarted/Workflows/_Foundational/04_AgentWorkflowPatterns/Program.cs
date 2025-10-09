@@ -1,10 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Microsoft.Agents.AI;
@@ -88,7 +84,7 @@ public static class Program
         {
             string? lastExecutorId = null;
 
-            StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
+            await using StreamingRun run = await InProcessExecution.StreamAsync(workflow, messages);
             await run.TrySendMessageAsync(new TurnToken(emitEvents: true));
             await foreach (WorkflowEvent evt in run.WatchStreamAsync().ConfigureAwait(false))
             {

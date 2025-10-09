@@ -2,6 +2,7 @@
 
 """FastAPI server implementation."""
 
+import inspect
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -18,8 +19,6 @@ from ._executor import AgentFrameworkExecutor
 from ._mapper import MessageMapper
 from .models import AgentFrameworkRequest, OpenAIError
 from .models._discovery_models import DiscoveryResponse, EntityInfo
-
-# Removed ExecutionEngine import - using direct executor approach
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,7 @@ class DevServer:
                 discovery = self.executor.entity_discovery
                 for entity in self._pending_entities:
                     try:
-                        entity_info = await discovery.create_entity_info_from_object(entity)
+                        entity_info = await discovery.create_entity_info_from_object(entity, source="in-memory")
                         discovery.register_entity(entity_info.id, entity_info, entity)
                         logger.info(f"Registered in-memory entity: {entity_info.id}")
                     except Exception as e:
@@ -85,6 +84,33 @@ class DevServer:
 
         return self.executor
 
+    async def _cleanup_entities(self) -> None:
+        """Cleanup entity resources (close clients, credentials, etc.)."""
+        if not self.executor:
+            return
+
+        logger.info("Cleaning up entity resources...")
+        entities = self.executor.entity_discovery.list_entities()
+        closed_count = 0
+
+        for entity_info in entities:
+            try:
+                entity_obj = self.executor.entity_discovery.get_entity_object(entity_info.id)
+                if entity_obj and hasattr(entity_obj, "chat_client"):
+                    client = entity_obj.chat_client
+                    if hasattr(client, "close") and callable(client.close):
+                        if inspect.iscoroutinefunction(client.close):
+                            await client.close()
+                        else:
+                            client.close()
+                        closed_count += 1
+                        logger.debug(f"Closed client for entity: {entity_info.id}")
+            except Exception as e:
+                logger.warning(f"Error closing entity {entity_info.id}: {e}")
+
+        if closed_count > 0:
+            logger.info(f"Closed {closed_count} entity client(s)")
+
     def create_app(self) -> FastAPI:
         """Create the FastAPI application."""
 
@@ -96,6 +122,10 @@ class DevServer:
             yield
             # Shutdown
             logger.info("Shutting down Agent Framework Server")
+
+            # Cleanup entity resources (e.g., close credentials, clients)
+            if self.executor:
+                await self._cleanup_entities()
 
         app = FastAPI(
             title="Agent Framework Server",
@@ -125,7 +155,8 @@ class DevServer:
         async def health_check() -> dict[str, Any]:
             """Health check endpoint."""
             executor = await self._ensure_executor()
-            entities = await executor.discover_entities()
+            # Use list_entities() to avoid re-discovering and re-registering entities
+            entities = executor.entity_discovery.list_entities()
 
             return {"status": "healthy", "entities_count": len(entities), "framework": "agent_framework"}
 
@@ -191,24 +222,34 @@ class DevServer:
                         start_executor_id = ""
 
                         try:
+                            from ._utils import (
+                                extract_executor_message_types,
+                                generate_input_schema,
+                                select_primary_input_type,
+                            )
+
                             start_executor = entity_obj.get_start_executor()
-                            if start_executor and hasattr(start_executor, "_handlers"):
-                                message_types = list(start_executor._handlers.keys())
-                                if message_types:
-                                    input_type = message_types[0]
-                                    input_type_name = getattr(input_type, "__name__", str(input_type))
-
-                                    # Basic schema generation for common types
-                                    if input_type is str:
-                                        input_schema = {"type": "string"}
-                                    elif input_type is dict:
-                                        input_schema = {"type": "object"}
-                                    elif hasattr(input_type, "model_json_schema"):
-                                        input_schema = input_type.model_json_schema()
-
-                                    start_executor_id = getattr(start_executor, "executor_id", "")
                         except Exception as e:
                             logger.debug(f"Could not extract input info for workflow {entity_id}: {e}")
+                        else:
+                            if start_executor:
+                                start_executor_id = getattr(start_executor, "executor_id", "") or getattr(
+                                    start_executor, "id", ""
+                                )
+
+                                message_types = extract_executor_message_types(start_executor)
+                                input_type = select_primary_input_type(message_types)
+
+                                if input_type:
+                                    input_type_name = getattr(input_type, "__name__", str(input_type))
+
+                                    # Generate schema using comprehensive schema generation
+                                    input_schema = generate_input_schema(input_type)
+
+                        if not input_schema:
+                            input_schema = {"type": "string"}
+                            if input_type_name == "Unknown":
+                                input_type_name = "string"
 
                         # Get executor list
                         executor_list = []
@@ -235,11 +276,75 @@ class DevServer:
                 logger.error(f"Error getting entity info for {entity_id}: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to get entity info: {e!s}") from e
 
+        @app.post("/v1/entities/add")
+        async def add_entity(request: dict[str, Any]) -> dict[str, Any]:
+            """Add entity from URL."""
+            try:
+                url = request.get("url")
+                metadata = request.get("metadata", {})
+
+                if not url:
+                    raise HTTPException(status_code=400, detail="URL is required")
+
+                logger.info(f"Attempting to add entity from URL: {url}")
+                executor = await self._ensure_executor()
+                entity_info, error_msg = await executor.entity_discovery.fetch_remote_entity(url, metadata)
+
+                if not entity_info:
+                    # Sanitize error message - only return safe, user-friendly errors
+                    logger.error(f"Failed to fetch or validate entity from {url}: {error_msg}")
+                    safe_error = error_msg if error_msg else "Failed to fetch or validate entity"
+                    raise HTTPException(status_code=400, detail=safe_error)
+
+                logger.info(f"Successfully added entity: {entity_info.id}")
+                return {"success": True, "entity": entity_info.model_dump()}
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error adding entity: {e}", exc_info=True)
+                # Don't expose internal error details to client
+                raise HTTPException(
+                    status_code=500, detail="An unexpected error occurred while adding the entity"
+                ) from e
+
+        @app.delete("/v1/entities/{entity_id}")
+        async def remove_entity(entity_id: str) -> dict[str, Any]:
+            """Remove entity by ID."""
+            try:
+                executor = await self._ensure_executor()
+
+                # Cleanup entity resources before removal
+                try:
+                    entity_obj = executor.entity_discovery.get_entity_object(entity_id)
+                    if entity_obj and hasattr(entity_obj, "chat_client"):
+                        client = entity_obj.chat_client
+                        if hasattr(client, "close") and callable(client.close):
+                            if inspect.iscoroutinefunction(client.close):
+                                await client.close()
+                            else:
+                                client.close()
+                            logger.info(f"Closed client for entity: {entity_id}")
+                except Exception as e:
+                    logger.warning(f"Error closing entity {entity_id} during removal: {e}")
+
+                # Remove entity from registry
+                success = executor.entity_discovery.remove_remote_entity(entity_id)
+
+                if success:
+                    return {"success": True}
+                raise HTTPException(status_code=404, detail="Entity not found or cannot be removed")
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error removing entity {entity_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to remove entity: {e!s}") from e
+
         @app.post("/v1/responses")
         async def create_response(request: AgentFrameworkRequest, raw_request: Request) -> Any:
             """OpenAI Responses API endpoint."""
             try:
-                # Debug: log the incoming request
                 raw_body = await raw_request.body()
                 logger.info(f"Raw request body: {raw_body.decode()}")
                 logger.info(f"Parsed request: model={request.model}, extra_body={request.extra_body}")
@@ -279,122 +384,188 @@ class DevServer:
                 error = OpenAIError.create(f"Execution failed: {e!s}")
                 return JSONResponse(status_code=500, content=error.to_dict())
 
-        @app.post("/v1/threads")
-        async def create_thread(request_data: dict[str, Any]) -> dict[str, Any]:
-            """Create a new thread for an agent."""
-            try:
-                agent_id = request_data.get("agent_id")
-                if not agent_id:
-                    raise HTTPException(status_code=400, detail="agent_id is required")
+        # ========================================
+        # OpenAI Conversations API (Standard)
+        # ========================================
 
+        @app.post("/v1/conversations")
+        async def create_conversation(request_data: dict[str, Any]) -> dict[str, Any]:
+            """Create a new conversation - OpenAI standard."""
+            try:
+                metadata = request_data.get("metadata")
                 executor = await self._ensure_executor()
-                thread_id = executor.create_thread(agent_id)
+                conversation = executor.conversation_store.create_conversation(metadata=metadata)
+                return conversation.model_dump()
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error creating conversation: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to create conversation: {e!s}") from e
+
+        @app.get("/v1/conversations")
+        async def list_conversations(agent_id: str | None = None) -> dict[str, Any]:
+            """List conversations, optionally filtered by agent_id."""
+            try:
+                executor = await self._ensure_executor()
+
+                if agent_id:
+                    # Filter by agent_id metadata
+                    conversations = executor.conversation_store.list_conversations_by_metadata({"agent_id": agent_id})
+                else:
+                    # Return all conversations (for InMemoryStore, list all)
+                    # Note: This assumes list_conversations_by_metadata({}) returns all
+                    conversations = executor.conversation_store.list_conversations_by_metadata({})
 
                 return {
-                    "id": thread_id,
-                    "object": "thread",
-                    "created_at": int(__import__("time").time()),
-                    "metadata": {"agent_id": agent_id},
+                    "object": "list",
+                    "data": [conv.model_dump() for conv in conversations],
+                    "has_more": False,
                 }
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"Error creating thread: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to create thread: {e!s}") from e
+                logger.error(f"Error listing conversations: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to list conversations: {e!s}") from e
 
-        @app.get("/v1/threads")
-        async def list_threads(agent_id: str) -> dict[str, Any]:
-            """List threads for an agent."""
+        @app.get("/v1/conversations/{conversation_id}")
+        async def retrieve_conversation(conversation_id: str) -> dict[str, Any]:
+            """Get conversation - OpenAI standard."""
             try:
                 executor = await self._ensure_executor()
-                thread_ids = executor.list_threads_for_agent(agent_id)
-
-                # Convert thread IDs to thread objects
-                threads = []
-                for thread_id in thread_ids:
-                    threads.append({"id": thread_id, "object": "thread", "agent_id": agent_id})
-
-                return {"object": "list", "data": threads}
-            except Exception as e:
-                logger.error(f"Error listing threads: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to list threads: {e!s}") from e
-
-        @app.get("/v1/threads/{thread_id}")
-        async def get_thread(thread_id: str) -> dict[str, Any]:
-            """Get thread information."""
-            try:
-                executor = await self._ensure_executor()
-
-                # Check if thread exists
-                thread = executor.get_thread(thread_id)
-                if not thread:
-                    raise HTTPException(status_code=404, detail="Thread not found")
-
-                # Get the agent that owns this thread
-                agent_id = executor.get_agent_for_thread(thread_id)
-
-                return {"id": thread_id, "object": "thread", "agent_id": agent_id}
+                conversation = executor.conversation_store.get_conversation(conversation_id)
+                if not conversation:
+                    raise HTTPException(status_code=404, detail="Conversation not found")
+                return conversation.model_dump()
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"Error getting thread {thread_id}: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to get thread: {e!s}") from e
+                logger.error(f"Error getting conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to get conversation: {e!s}") from e
 
-        @app.delete("/v1/threads/{thread_id}")
-        async def delete_thread(thread_id: str) -> dict[str, Any]:
-            """Delete a thread."""
+        @app.post("/v1/conversations/{conversation_id}")
+        async def update_conversation(conversation_id: str, request_data: dict[str, Any]) -> dict[str, Any]:
+            """Update conversation metadata - OpenAI standard."""
             try:
                 executor = await self._ensure_executor()
-                success = executor.delete_thread(thread_id)
-
-                if not success:
-                    raise HTTPException(status_code=404, detail="Thread not found")
-
-                return {"id": thread_id, "object": "thread.deleted", "deleted": True}
+                metadata = request_data.get("metadata", {})
+                conversation = executor.conversation_store.update_conversation(conversation_id, metadata=metadata)
+                return conversation.model_dump()
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"Error deleting thread {thread_id}: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to delete thread: {e!s}") from e
+                logger.error(f"Error updating conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to update conversation: {e!s}") from e
 
-        @app.get("/v1/threads/{thread_id}/messages")
-        async def get_thread_messages(thread_id: str) -> dict[str, Any]:
-            """Get messages from a thread."""
+        @app.delete("/v1/conversations/{conversation_id}")
+        async def delete_conversation(conversation_id: str) -> dict[str, Any]:
+            """Delete conversation - OpenAI standard."""
             try:
                 executor = await self._ensure_executor()
-
-                # Check if thread exists
-                thread = executor.get_thread(thread_id)
-                if not thread:
-                    raise HTTPException(status_code=404, detail="Thread not found")
-
-                # Get messages from thread
-                messages = await executor.get_thread_messages(thread_id)
-
-                return {"object": "list", "data": messages, "thread_id": thread_id}
+                result = executor.conversation_store.delete_conversation(conversation_id)
+                return result.model_dump()
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"Error getting messages for thread {thread_id}: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to get thread messages: {e!s}") from e
+                logger.error(f"Error deleting conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to delete conversation: {e!s}") from e
+
+        @app.post("/v1/conversations/{conversation_id}/items")
+        async def create_conversation_items(conversation_id: str, request_data: dict[str, Any]) -> dict[str, Any]:
+            """Add items to conversation - OpenAI standard."""
+            try:
+                executor = await self._ensure_executor()
+                items = request_data.get("items", [])
+                conv_items = await executor.conversation_store.add_items(conversation_id, items=items)
+                return {"object": "list", "data": [item.model_dump() for item in conv_items]}
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error adding items to conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to add items: {e!s}") from e
+
+        @app.get("/v1/conversations/{conversation_id}/items")
+        async def list_conversation_items(
+            conversation_id: str, limit: int = 100, after: str | None = None, order: str = "asc"
+        ) -> dict[str, Any]:
+            """List conversation items - OpenAI standard."""
+            try:
+                executor = await self._ensure_executor()
+                items, has_more = await executor.conversation_store.list_items(
+                    conversation_id, limit=limit, after=after, order=order
+                )
+                return {
+                    "object": "list",
+                    "data": [item.model_dump() for item in items],
+                    "has_more": has_more,
+                }
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error listing items for conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to list items: {e!s}") from e
+
+        @app.get("/v1/conversations/{conversation_id}/items/{item_id}")
+        async def retrieve_conversation_item(conversation_id: str, item_id: str) -> dict[str, Any]:
+            """Get specific conversation item - OpenAI standard."""
+            try:
+                executor = await self._ensure_executor()
+                item = executor.conversation_store.get_item(conversation_id, item_id)
+                if not item:
+                    raise HTTPException(status_code=404, detail="Item not found")
+                return item.model_dump()
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error getting item {item_id} from conversation {conversation_id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to get item: {e!s}") from e
 
     async def _stream_execution(
         self, executor: AgentFrameworkExecutor, request: AgentFrameworkRequest
     ) -> AsyncGenerator[str, None]:
         """Stream execution directly through executor."""
         try:
-            # Direct call to executor - simple and clean
+            # Collect events for final response.completed event
+            events = []
+
+            # Stream all events
             async for event in executor.execute_streaming(request):
-                if hasattr(event, "to_json") and callable(getattr(event, "to_json", None)):
-                    payload = event.to_json()  # type: ignore[attr-defined]
-                elif hasattr(event, "model_dump_json"):
+                events.append(event)
+
+                # IMPORTANT: Check model_dump_json FIRST because to_json() can have newlines (pretty-printing)
+                # which breaks SSE format. model_dump_json() returns single-line JSON.
+                if hasattr(event, "model_dump_json"):
                     payload = event.model_dump_json()  # type: ignore[attr-defined]
+                elif hasattr(event, "to_json") and callable(getattr(event, "to_json", None)):
+                    payload = event.to_json()  # type: ignore[attr-defined]
+                    # Strip newlines from pretty-printed JSON for SSE compatibility
+                    payload = payload.replace("\n", "").replace("\r", "")
+                elif isinstance(event, dict):
+                    # Handle plain dict events (e.g., error events from executor)
+                    payload = json.dumps(event)
+                elif hasattr(event, "to_dict") and callable(getattr(event, "to_dict", None)):
+                    payload = json.dumps(event.to_dict())  # type: ignore[attr-defined]
                 else:
-                    if hasattr(event, "to_dict") and callable(getattr(event, "to_dict", None)):
-                        payload = json.dumps(event.to_dict())  # type: ignore[attr-defined]
-                    else:
-                        payload = json.dumps(str(event))
+                    payload = json.dumps(str(event))
                 yield f"data: {payload}\n\n"
+
+            # Aggregate to final response and emit response.completed event (OpenAI standard)
+            from .models import ResponseCompletedEvent
+
+            final_response = await executor.message_mapper.aggregate_to_response(events, request)
+            completed_event = ResponseCompletedEvent(
+                type="response.completed",
+                response=final_response,
+                sequence_number=len(events),
+            )
+            yield f"data: {completed_event.model_dump_json()}\n\n"
 
             # Send final done event
             yield "data: [DONE]\n\n"
@@ -402,7 +573,7 @@ class DevServer:
         except Exception as e:
             logger.error(f"Error in streaming execution: {e}")
             error_event = {"id": "error", "object": "error", "error": {"message": str(e), "type": "execution_error"}}
-            yield f"data: {error_event}\n\n"
+            yield f"data: {json.dumps(error_event)}\n\n"
 
     def _mount_ui(self, app: FastAPI) -> None:
         """Mount the UI as static files."""

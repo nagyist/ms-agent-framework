@@ -1,13 +1,14 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Microsoft.Agents.AI;
 
 /// <summary>Provides a collection of utility methods for working with JSON data in the context of agents.</summary>
-public static partial class AgentJsonUtilities
+internal static partial class AgentJsonUtilities
 {
     /// <summary>
     /// Gets the <see cref="JsonSerializerOptions"/> singleton used as the default in JSON serialization operations.
@@ -37,10 +38,17 @@ public static partial class AgentJsonUtilities
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
-        JsonSerializerOptions options = new(JsonContext.Default.Options);
+        JsonSerializerOptions options = new(JsonContext.Default.Options)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // same as in AgentAbstractionsJsonUtilities and AIJsonUtilities
+        };
 
         // Chain with all supported types from Microsoft.Extensions.AI.Abstractions.
         options.TypeInfoResolverChain.Add(AgentAbstractionsJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        if (JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            options.Converters.Add(new JsonStringEnumConverter());
+        }
 
         options.MakeReadOnly();
         return options;
@@ -48,6 +56,7 @@ public static partial class AgentJsonUtilities
 
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
+        UseStringEnumConverter = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
 

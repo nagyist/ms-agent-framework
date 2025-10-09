@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI.Workflows.Declarative.Extensions;
+using Microsoft.Agents.AI.Workflows.Declarative.Kit;
 using Microsoft.Agents.AI.Workflows.Declarative.PowerFx;
 using Microsoft.Bot.ObjectModel;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ internal abstract class DeclarativeActionExecutor<TAction>(TAction model, Workfl
     public new TAction Model => (TAction)base.Model;
 }
 
-internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResult>
+internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResult>, IResettableExecutor, IModeledAction
 {
     private string? _parentId;
     private readonly WorkflowFormulaState _state;
@@ -54,7 +55,13 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
     protected virtual bool EmitResultEvent => true;
 
     /// <inheritdoc/>
-    public override async ValueTask HandleAsync(ActionExecutorResult message, IWorkflowContext context)
+    public ValueTask ResetAsync()
+    {
+        return default;
+    }
+
+    /// <inheritdoc/>
+    public override async ValueTask HandleAsync(ActionExecutorResult message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         if (this.Model.Disabled)
         {
@@ -62,7 +69,7 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
             return;
         }
 
-        await context.RaiseInvocationEventAsync(this.Model, message.ExecutorId).ConfigureAwait(false);
+        await context.RaiseInvocationEventAsync(this.Model, message.ExecutorId, cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -71,7 +78,7 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
 
             if (this.EmitResultEvent)
             {
-                await context.SendResultMessageAsync(this.Id, result).ConfigureAwait(false);
+                await context.SendResultMessageAsync(this.Id, result, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (DeclarativeActionException exception)
@@ -88,7 +95,7 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
         {
             if (this.IsDiscreteAction)
             {
-                await context.RaiseCompletionEventAsync(this.Model).ConfigureAwait(false);
+                await context.RaiseCompletionEventAsync(this.Model, cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -99,8 +106,8 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
     /// Restore the state of the executor from a checkpoint.
     /// This must be overridden to restore any state that was saved during checkpointing.
     /// </summary>
-    protected override ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellation = default) =>
-        this._state.RestoreAsync(context, cancellation);
+    protected override ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellationToken = default) =>
+        this._state.RestoreAsync(context, cancellationToken);
 
     protected async ValueTask AssignAsync(PropertyPath? targetPath, FormulaValue result, IWorkflowContext context)
     {
@@ -118,7 +125,7 @@ internal abstract class DeclarativeActionExecutor : Executor<ActionExecutorResul
             $"""
             STATE: {this.GetType().Name} [{this.Id}]
              NAME: {targetPath}
-            VALUE:{valuePosition}{result.Format()} ({result.GetType().Name})
+            VALUE:{valuePosition}{resultValue} ({result.GetType().Name})
             """);
 #endif
     }

@@ -3,14 +3,13 @@
 @inject AgentDiscoveryClient AgentClient
 @inject IJSRuntime JSRuntime
 @inject ILogger<Home> Logger
-@inject IActorClient ActorClient
-@inject A2AActorClient A2AActorClient
+@inject A2AAgentClient A2AActorClient
+@inject OpenAIResponsesAgentClient OpenAIResponsesAgentClient
 @rendermode InteractiveServer
 @using System.Text
 @using System.Text.Json
 @using Microsoft.Extensions.AI
 @using Microsoft.Agents.AI.Hosting
-@using Microsoft.Agents.AI.Runtime
 @using A2A
 
 <PageTitle>Agent Web Chat</PageTitle>
@@ -53,18 +52,18 @@
         <label for="protocol-select" class="protocol-select-label">Choose communication protocol:</label>
         <div class="protocol-select-wrapper">
             <select id="protocol-select" class="protocol-select" @bind="selectedProtocol" disabled="@(isStreaming)">
-                <option value="AgenticFramework">Agentic Framework</option>
+                <option value="OpenAIResponses">OpenAI Responses</option>
                 <option value="A2A">A2A (Agent-to-Agent)</option>
             </select>
             <div class="protocol-info">
                 @switch (selectedProtocol)
                 {
-                    case Protocol.A2A:
-                        <span class="protocol-description">🔗 A2A protocol supports long-running agentic processes</span>
+					case Protocol.OpenAIResponses:
+                        <span class="protocol-description">֎ OpenAI Responses</span>
                         break;
-                    case Protocol.AgenticFramework:
-                    default:
-                        <span class="protocol-description">⚡ Direct agentic framework communication</span>
+					case Protocol.A2A:
+					default:
+                        <span class="protocol-description">🔗 A2A protocol supports long-running agentic processes</span>
                         break;
                 }
             </div>
@@ -882,6 +881,7 @@
 </style>
 
 @code {
+
 	private string currentMessage = "";
 	private bool isStreaming = false;
 	private bool isLoadingAgents = true;
@@ -902,8 +902,8 @@
 
 	private enum Protocol
 	{
-		AgenticFramework,
-		A2A // Agent-to-Agent protocol
+		A2A, // Agent-to-Agent protocol
+		OpenAIResponses
 	}
 
 	private sealed class Conversation
@@ -943,23 +943,23 @@
 		// Conversations start fresh on page load
 	}
 
-        private string GetAgentIcon(string agentName) => agentName?.ToLower() switch
-        {
-            "pirate" => "🏴‍☠️",
-            "knights-and-knaves" => "⚔️",
-            _ => "🤖"
-        };
+	private string GetAgentIcon(string agentName) => agentName?.ToLower() switch
+	{
+		"pirate" => "🏴‍☠️",
+		"knights-and-knaves" => "⚔️",
+		_ => "🤖"
+	};
 
-        private string GetAgentDisplayName(string agentName) => agentName?.ToLower() switch
-        {
-            "pirate" => "Pirate",
-            "knights-and-knaves" => "Knights & Knaves",
-            _ => agentName ?? "Agent"
-        };
+	private string GetAgentDisplayName(string agentName) => agentName?.ToLower() switch
+	{
+		"pirate" => "Pirate",
+		"knights-and-knaves" => "Knights & Knaves",
+		_ => agentName ?? "Agent"
+	};
 
-        private void ToggleA2AExpanded() => isA2AExpanded = !isA2AExpanded;
+	private void ToggleA2AExpanded() => isA2AExpanded = !isA2AExpanded;
 
-        private async Task DiscoverAgentCard()
+	private async Task DiscoverAgentCard()
 	{
 		if (string.IsNullOrEmpty(selectedAgentName) || isDiscoveringCard)
 			return;
@@ -973,8 +973,15 @@
 		{
 			Logger.LogInformation("Discovering agent card for agent: {AgentName}", selectedAgentName);
 			var agentCard = await A2AActorClient.GetAgentCardAsync(selectedAgentName);
-			discoveredAgentCardJson = JsonSerializer.Serialize(agentCard, new JsonSerializerOptions() { WriteIndented = true });
-			Logger.LogInformation("Successfully discovered agent card for {AgentName}: {CardData}", selectedAgentName, discoveredAgentCardJson);
+			if (agentCard is not null)
+			{
+				discoveredAgentCardJson = JsonSerializer.Serialize(agentCard, new JsonSerializerOptions() { WriteIndented = true });
+				Logger.LogInformation("Successfully discovered agent card for {AgentName}: {CardData}", selectedAgentName, discoveredAgentCardJson);
+			}
+			else
+			{
+				discoveryError = "No agent card found for this agent.";
+			}
 		}
 		catch (Exception ex)
 		{
@@ -1073,13 +1080,20 @@
 
 		try
 		{
-			var actorClient = (selectedProtocol is Protocol.A2A) ? A2AActorClient : ActorClient;
-            var agent = new AgentProxy(currentConversation.AgentName, actorClient);
-            var thread = agent.GetNewThread(currentConversation.SessionId);
 
-            await foreach (var update in agent.RunStreamingAsync(
-            [new ChatMessage(ChatRole.User, userMessage)],
-                thread,
+			// Select the appropriate client based on protocol
+			IAgentClient agentClient = selectedProtocol switch
+			{
+				Protocol.OpenAIResponses => OpenAIResponsesAgentClient,
+				Protocol.A2A or _ => A2AActorClient
+			};
+
+            var messages = new List<ChatMessage> { new(ChatRole.User, userMessage) };
+
+            await foreach (var update in agentClient.RunStreamingAsync(
+                currentConversation.AgentName,
+                messages,
+                currentConversation.SessionId,
                 cancellationToken: timeoutCts.Token))
             {
                 var content = update.Text ?? "";

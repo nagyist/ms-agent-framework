@@ -2,6 +2,9 @@
 
 """Agent Framework entity discovery implementation."""
 
+from __future__ import annotations
+
+import hashlib
 import importlib
 import importlib.util
 import logging
@@ -10,11 +13,16 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 
 from .models._discovery_models import EntityInfo
 
 logger = logging.getLogger(__name__)
+
+# Constants for remote entity fetching
+REMOTE_FETCH_TIMEOUT_SECONDS = 30.0
+REMOTE_FETCH_MAX_SIZE_MB = 10
 
 
 class EntityDiscovery:
@@ -29,6 +37,7 @@ class EntityDiscovery:
         self.entities_dir = entities_dir
         self._entities: dict[str, EntityInfo] = {}
         self._loaded_objects: dict[str, Any] = {}
+        self._remote_cache_dir = Path.home() / ".agent_framework_devui" / "remote_cache"
 
     async def discover_entities(self) -> list[EntityInfo]:
         """Scan for Agent Framework entities.
@@ -88,12 +97,15 @@ class EntityDiscovery:
         self._loaded_objects[entity_id] = entity_object
         logger.debug(f"Registered entity: {entity_id} ({entity_info.type})")
 
-    async def create_entity_info_from_object(self, entity_object: Any, entity_type: str | None = None) -> EntityInfo:
+    async def create_entity_info_from_object(
+        self, entity_object: Any, entity_type: str | None = None, source: str = "in_memory"
+    ) -> EntityInfo:
         """Create EntityInfo from Agent Framework entity object.
 
         Args:
             entity_object: Agent Framework entity object
             entity_type: Optional entity type override
+            source: Source of entity (directory, in_memory, remote)
 
         Returns:
             EntityInfo with Agent Framework specific metadata
@@ -108,23 +120,46 @@ class EntityDiscovery:
         # Extract metadata with improved fallback naming
         name = getattr(entity_object, "name", None)
         if not name:
-            # In-memory entities: use ID with entity type prefix since no directory name available
-            entity_id_raw = getattr(entity_object, "id", None)
-            if entity_id_raw:
-                # Truncate UUID to first 8 characters for readability
-                short_id = str(entity_id_raw)[:8] if len(str(entity_id_raw)) > 8 else str(entity_id_raw)
-                name = f"{entity_type.title()} {short_id}"
-            else:
-                # Fallback to class name with entity type
-                class_name = entity_object.__class__.__name__
-                name = f"{entity_type.title()} {class_name}"
+            # In-memory entities: use class name as it's more readable than UUID
+            class_name = entity_object.__class__.__name__
+            name = f"{entity_type.title()} {class_name}"
         description = getattr(entity_object, "description", "")
 
         # Generate entity ID using Agent Framework specific naming
-        entity_id = self._generate_entity_id(entity_object, entity_type)
+        entity_id = self._generate_entity_id(entity_object, entity_type, source)
 
         # Extract tools/executors using Agent Framework specific logic
         tools_list = await self._extract_tools_from_object(entity_object, entity_type)
+
+        # Extract agent-specific fields (for agents only)
+        instructions = None
+        model = None
+        chat_client_type = None
+        context_providers_list = None
+        middleware_list = None
+
+        if entity_type == "agent":
+            from ._utils import extract_agent_metadata
+
+            agent_meta = extract_agent_metadata(entity_object)
+            instructions = agent_meta["instructions"]
+            model = agent_meta["model"]
+            chat_client_type = agent_meta["chat_client_type"]
+            context_providers_list = agent_meta["context_providers"]
+            middleware_list = agent_meta["middleware"]
+
+        # Log helpful info about agent capabilities (before creating EntityInfo)
+        if entity_type == "agent":
+            has_run_stream = hasattr(entity_object, "run_stream")
+            has_run = hasattr(entity_object, "run")
+
+            if not has_run_stream and has_run:
+                logger.info(
+                    f"Agent '{entity_id}' only has run() (non-streaming). "
+                    "DevUI will automatically convert to streaming."
+                )
+            elif not has_run_stream and not has_run:
+                logger.warning(f"Agent '{entity_id}' lacks both run() and run_stream() methods. May not work.")
 
         # Create EntityInfo with Agent Framework specifics
         return EntityInfo(
@@ -134,6 +169,11 @@ class EntityDiscovery:
             type=entity_type,
             framework="agent_framework",
             tools=[str(tool) for tool in (tools_list or [])],
+            instructions=instructions,
+            model_id=model,
+            chat_client_type=chat_client_type,
+            context_providers=context_providers_list,
+            middleware=middleware_list,
             executors=tools_list if entity_type == "workflow" else [],
             input_schema={"type": "string"},  # Default schema
             start_executor_id=tools_list[0] if tools_list and entity_type == "workflow" else None,
@@ -343,9 +383,9 @@ class EntityDiscovery:
                 continue
 
             if self._is_valid_entity(obj, obj_type):
-                entity_id = f"{obj_type}_{base_id}"
-                await self._register_entity_from_object(entity_id, obj, obj_type, module_path)
-                entities_found.append(entity_id)
+                # Pass source as "directory" for directory-discovered entities
+                await self._register_entity_from_object(obj, obj_type, module_path, source="directory")
+                entities_found.append(obj_type)
 
         return entities_found
 
@@ -385,7 +425,9 @@ class EntityDiscovery:
                 pass
 
             # Fallback to duck typing for agent protocol
-            if hasattr(obj, "run_stream") and hasattr(obj, "id") and hasattr(obj, "name"):
+            # Agent must have either run_stream() or run() method, plus id and name
+            has_execution_method = hasattr(obj, "run_stream") or hasattr(obj, "run")
+            if has_execution_method and hasattr(obj, "id") and hasattr(obj, "name"):
                 return True
 
         except (TypeError, AttributeError):
@@ -405,35 +447,27 @@ class EntityDiscovery:
         # Check for workflow - must have run_stream method and executors
         return hasattr(obj, "run_stream") and (hasattr(obj, "executors") or hasattr(obj, "get_executors_list"))
 
-    async def _register_entity_from_object(self, entity_id: str, obj: Any, obj_type: str, module_path: str) -> None:
+    async def _register_entity_from_object(
+        self, obj: Any, obj_type: str, module_path: str, source: str = "directory"
+    ) -> None:
         """Register an entity from a live object.
 
         Args:
-            entity_id: Unique entity identifier
             obj: Entity object
             obj_type: Type of entity ("agent" or "workflow")
             module_path: Path to module for metadata
+            source: Source of entity (directory, in_memory, remote)
         """
         try:
+            # Generate entity ID with source information
+            entity_id = self._generate_entity_id(obj, obj_type, source)
+
             # Extract metadata from the live object with improved fallback naming
             name = getattr(obj, "name", None)
             if not name:
-                # For directory-based entities, prefer directory name over UUID
-                # entity_id format: "workflow_fanout_workflow" or "agent_weather_agent"
-                if entity_id and "_" in entity_id:
-                    # Directory-based: use formatted directory name (remove type prefix)
-                    directory_name = entity_id.split("_", 1)[1] if "_" in entity_id else entity_id
-                    name = directory_name.replace("_", " ").title()
-                else:
-                    # In-memory: use ID with entity type prefix
-                    entity_id_raw = getattr(obj, "id", None)
-                    if entity_id_raw:
-                        # Truncate UUID to first 8 characters for readability
-                        short_id = str(entity_id_raw)[:8] if len(str(entity_id_raw)) > 8 else str(entity_id_raw)
-                        name = f"{obj_type.title()} {short_id}"
-                    else:
-                        # Final fallback to class name
-                        name = f"{obj_type.title()} {obj.__class__.__name__}"
+                # Use class name as it's more readable than UUID
+                class_name = obj.__class__.__name__
+                name = f"{obj_type.title()} {class_name}"
             description = getattr(obj, "description", None)
             tools = await self._extract_tools_from_object(obj, obj_type)
 
@@ -442,6 +476,23 @@ class EntityDiscovery:
             if tools:
                 tools_union = [tool for tool in tools]
 
+            # Extract agent-specific fields (for agents only)
+            instructions = None
+            model = None
+            chat_client_type = None
+            context_providers_list = None
+            middleware_list = None
+
+            if obj_type == "agent":
+                from ._utils import extract_agent_metadata
+
+                agent_meta = extract_agent_metadata(obj)
+                instructions = agent_meta["instructions"]
+                model = agent_meta["model"]
+                chat_client_type = agent_meta["chat_client_type"]
+                context_providers_list = agent_meta["context_providers"]
+                middleware_list = agent_meta["middleware"]
+
             entity_info = EntityInfo(
                 id=entity_id,
                 type=obj_type,
@@ -449,10 +500,15 @@ class EntityDiscovery:
                 framework="agent_framework",
                 description=description,
                 tools=tools_union,
+                instructions=instructions,
+                model_id=model,
+                chat_client_type=chat_client_type,
+                context_providers=context_providers_list,
+                middleware=middleware_list,
                 metadata={
                     "module_path": module_path,
                     "entity_type": obj_type,
-                    "source": "module_import",
+                    "source": source,
                     "has_run_stream": hasattr(obj, "run_stream"),
                     "class_name": obj.__class__.__name__ if hasattr(obj, "__class__") else str(type(obj)),
                 },
@@ -462,7 +518,7 @@ class EntityDiscovery:
             self.register_entity(entity_id, entity_info, obj)
 
         except Exception as e:
-            logger.error(f"Error registering entity {entity_id}: {e}")
+            logger.error(f"Error registering entity from {source}: {e}")
 
     async def _extract_tools_from_object(self, obj: Any, obj_type: str) -> list[str]:
         """Extract tool/executor names from a live object.
@@ -517,34 +573,202 @@ class EntityDiscovery:
 
         return tools
 
-    def _generate_entity_id(self, entity: Any, entity_type: str) -> str:
-        """Generate entity ID with priority: name -> id -> class_name -> uuid.
+    def _generate_entity_id(self, entity: Any, entity_type: str, source: str = "directory") -> str:
+        """Generate unique entity ID with UUID suffix for collision resistance.
 
         Args:
             entity: Entity object
             entity_type: Type of entity (agent, workflow, etc.)
+            source: Source of entity (directory, in_memory, remote)
 
         Returns:
-            Generated entity ID
+            Unique entity ID with format: {type}_{source}_{name}_{uuid}
         """
         import re
 
-        # Priority 1: entity.name
+        # Extract base name with priority: name -> id -> class_name
         if hasattr(entity, "name") and entity.name:
-            name = str(entity.name).lower().replace(" ", "-").replace("_", "-")
-            return f"{entity_type}_{name}"
-
-        # Priority 2: entity.id
-        if hasattr(entity, "id") and entity.id:
-            entity_id = str(entity.id).lower().replace(" ", "-").replace("_", "-")
-            return f"{entity_type}_{entity_id}"
-
-        # Priority 3: class name
-        if hasattr(entity, "__class__"):
+            base_name = str(entity.name).lower().replace(" ", "-").replace("_", "-")
+        elif hasattr(entity, "id") and entity.id:
+            base_name = str(entity.id).lower().replace(" ", "-").replace("_", "-")
+        elif hasattr(entity, "__class__"):
             class_name = entity.__class__.__name__
             # Convert CamelCase to kebab-case
-            class_name = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", class_name).lower()
-            return f"{entity_type}_{class_name}"
+            base_name = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", class_name).lower()
+        else:
+            base_name = "entity"
 
-        # Priority 4: fallback to uuid
-        return f"{entity_type}_{uuid.uuid4().hex[:8]}"
+        # Generate full UUID for guaranteed uniqueness
+        full_uuid = uuid.uuid4().hex
+
+        return f"{entity_type}_{source}_{base_name}_{full_uuid}"
+
+    async def fetch_remote_entity(
+        self, url: str, metadata: dict[str, Any] | None = None
+    ) -> tuple[EntityInfo | None, str | None]:
+        """Fetch and register entity from URL.
+
+        Args:
+            url: URL to Python file containing entity
+            metadata: Additional metadata (source, sampleId, etc.)
+
+        Returns:
+            Tuple of (EntityInfo if successful, error_message if failed)
+        """
+        try:
+            normalized_url = self._normalize_url(url)
+            logger.info(f"Normalized URL: {normalized_url}")
+
+            content = await self._fetch_url_content(normalized_url)
+            if not content:
+                error_msg = "Failed to fetch content from URL. The file may not exist or is not accessible."
+                logger.warning(error_msg)
+                return None, error_msg
+
+            if not self._validate_python_syntax(content):
+                error_msg = "Invalid Python syntax in the file. Please check the file contains valid Python code."
+                logger.warning(error_msg)
+                return None, error_msg
+
+            entity_object = await self._load_entity_from_content(content, url)
+            if not entity_object:
+                error_msg = (
+                    "No valid agent or workflow found in the file. "
+                    "Make sure the file contains an 'agent' or 'workflow' variable."
+                )
+                logger.warning(error_msg)
+                return None, error_msg
+
+            entity_info = await self.create_entity_info_from_object(
+                entity_object,
+                entity_type=None,  # Auto-detect
+                source="remote",
+            )
+
+            entity_info.source = metadata.get("source", "remote_gallery") if metadata else "remote_gallery"
+            entity_info.original_url = url
+            if metadata:
+                entity_info.metadata.update(metadata)
+
+            self.register_entity(entity_info.id, entity_info, entity_object)
+
+            logger.info(f"Successfully added remote entity: {entity_info.id}")
+            return entity_info, None
+
+        except Exception as e:
+            error_msg = f"Unexpected error: {e!s}"
+            logger.error(f"Error fetching remote entity from {url}: {e}", exc_info=True)
+            return None, error_msg
+
+    def _normalize_url(self, url: str) -> str:
+        """Convert various Git hosting URLs to raw content URLs."""
+        # GitHub: blob -> raw
+        if "github.com" in url and "/blob/" in url:
+            return url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+
+        # GitLab: blob -> raw
+        if "gitlab.com" in url and "/-/blob/" in url:
+            return url.replace("/-/blob/", "/-/raw/")
+
+        # Bitbucket: src -> raw
+        if "bitbucket.org" in url and "/src/" in url:
+            return url.replace("/src/", "/raw/")
+
+        return url
+
+    async def _fetch_url_content(self, url: str, max_size_mb: int = REMOTE_FETCH_MAX_SIZE_MB) -> str | None:
+        """Fetch content from URL with size and timeout limits."""
+        try:
+            async with httpx.AsyncClient(timeout=REMOTE_FETCH_TIMEOUT_SECONDS) as client:
+                response = await client.get(url)
+
+                if response.status_code != 200:
+                    logger.warning(f"HTTP {response.status_code} for {url}")
+                    return None
+
+                # Check content length
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > max_size_mb * 1024 * 1024:
+                    logger.warning(f"File too large: {content_length} bytes")
+                    return None
+
+                # Read with size limit
+                content = response.text
+                if len(content.encode("utf-8")) > max_size_mb * 1024 * 1024:
+                    logger.warning("Content too large after reading")
+                    return None
+
+                return content
+
+        except Exception as e:
+            logger.error(f"Error fetching {url}: {e}")
+            return None
+
+    def _validate_python_syntax(self, content: str) -> bool:
+        """Validate that content is valid Python code."""
+        try:
+            compile(content, "<remote>", "exec")
+            return True
+        except SyntaxError as e:
+            logger.warning(f"Python syntax error: {e}")
+            return False
+
+    async def _load_entity_from_content(self, content: str, source_url: str) -> Any | None:
+        """Load entity object from Python content string using disk-based import.
+
+        This method caches remote entities to disk and uses importlib for loading,
+        making it consistent with local entity discovery and avoiding exec() security warnings.
+        """
+        try:
+            # Create cache directory if it doesn't exist
+            self._remote_cache_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate a unique filename based on URL hash
+            url_hash = hashlib.sha256(source_url.encode()).hexdigest()[:16]
+            module_name = f"remote_entity_{url_hash}"
+            cached_file = self._remote_cache_dir / f"{module_name}.py"
+
+            # Write content to cache file
+            cached_file.write_text(content, encoding="utf-8")
+            logger.debug(f"Cached remote entity to {cached_file}")
+
+            # Load module from cached file using importlib (same as local scanning)
+            module = self._load_module_from_file(cached_file, module_name)
+            if not module:
+                logger.warning(f"Failed to load module from cached file: {cached_file}")
+                return None
+
+            # Look for agent or workflow objects in the loaded module
+            for name in dir(module):
+                if name.startswith("_"):
+                    continue
+
+                obj = getattr(module, name)
+
+                # Check for explicitly named entities first
+                if name in ["agent", "workflow"] and self._is_valid_entity(obj, name):
+                    return obj
+
+                # Also check if any object looks like an agent/workflow
+                if self._is_valid_agent(obj) or self._is_valid_workflow(obj):
+                    return obj
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error loading entity from content: {e}")
+            return None
+
+    def remove_remote_entity(self, entity_id: str) -> bool:
+        """Remove a remote entity by ID."""
+        if entity_id in self._entities:
+            entity_info = self._entities[entity_id]
+            if entity_info.source in ["remote_gallery", "remote"]:
+                del self._entities[entity_id]
+                if entity_id in self._loaded_objects:
+                    del self._loaded_objects[entity_id]
+                logger.info(f"Removed remote entity: {entity_id}")
+                return True
+            logger.warning(f"Cannot remove local entity: {entity_id}")
+            return False
+        return False

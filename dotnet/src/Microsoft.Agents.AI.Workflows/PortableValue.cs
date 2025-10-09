@@ -150,7 +150,7 @@ public sealed class PortableValue
     /// <param name="value">When this method returns, contains the value cast or deserialized to type TValue
     /// if the conversion succeeded, or null if the conversion failed.</param>
     /// <returns>true if the current instance can be assigned to targetType; otherwise, false.</returns>
-    public bool IsType(Type targetType, out object? value)
+    public bool IsType(Type targetType, [NotNullWhen(true)] out object? value)
     {
         Throw.IfNull(targetType);
         if (this.Value is IDelayedDeserialization delayedDeserialization)
@@ -158,7 +158,7 @@ public sealed class PortableValue
             this._deserializedValueCache ??= delayedDeserialization.Deserialize(targetType);
         }
 
-        if (this.Value is not null && targetType.IsAssignableFrom(this.Value.GetType()))
+        if (this.Value is not null && targetType.IsInstanceOfType(this.Value))
         {
             value = this.Value;
             return true;

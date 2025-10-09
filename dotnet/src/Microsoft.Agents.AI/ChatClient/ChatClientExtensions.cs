@@ -1,5 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -8,9 +10,46 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Extensions.AI;
 
-internal static class ChatClientExtensions
+/// <summary>
+/// Provides extension methods for Creating an <see cref="AIAgent"/> from an <see cref="IChatClient"/>.
+/// </summary>
+public static class ChatClientExtensions
 {
-    internal static IChatClient WithDefaultAgentMiddleware(this IChatClient chatClient, ChatClientAgentOptions? options)
+    /// <summary>
+    /// Creates a new <see cref="ChatClientAgent"/> instance.
+    /// </summary>
+    /// <inheritdoc cref="ChatClientAgent(IChatClient, string?, string?, string?, IList{AITool}?, ILoggerFactory?, IServiceProvider?)"/>
+    /// <returns>A new <see cref="ChatClientAgent"/> instance.</returns>
+    public static ChatClientAgent CreateAIAgent(
+        this IChatClient chatClient,
+        string? instructions = null,
+        string? name = null,
+        string? description = null,
+        IList<AITool>? tools = null,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? services = null) =>
+        new(
+            chatClient,
+            instructions: instructions,
+            name: name,
+            description: description,
+            tools: tools,
+            loggerFactory: loggerFactory,
+            services: services);
+
+    /// <summary>
+    /// Creates a new <see cref="ChatClientAgent"/> instance.
+    /// </summary>
+    /// <inheritdoc cref="ChatClientAgent(IChatClient, ChatClientAgentOptions?, ILoggerFactory?, IServiceProvider?)"/>
+    /// <returns>A new <see cref="ChatClientAgent"/> instance.</returns>
+    public static ChatClientAgent CreateAIAgent(
+        this IChatClient chatClient,
+        ChatClientAgentOptions? options,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? services = null) =>
+        new(chatClient, options, loggerFactory, services);
+
+    internal static IChatClient WithDefaultAgentMiddleware(this IChatClient chatClient, ChatClientAgentOptions? options, IServiceProvider? services = null)
     {
         var chatBuilder = chatClient.AsBuilder();
 
@@ -24,7 +63,7 @@ internal static class ChatClientExtensions
             });
         }
 
-        var agentChatClient = chatBuilder.Build();
+        var agentChatClient = chatBuilder.Build(services);
 
         if (options?.ChatOptions?.Tools is { Count: > 0 })
         {

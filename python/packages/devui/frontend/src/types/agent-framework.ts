@@ -34,10 +34,27 @@ export interface ResponseInputFileParam {
   filename: string;
 }
 
+// DevUI Extension: Function Approval Response Input
+export interface ResponseInputFunctionApprovalParam {
+  /** The type of the input item. Always `function_approval_response`. */
+  type: "function_approval_response";
+  /** The ID of the approval request being responded to. */
+  request_id: string;
+  /** Whether the function call is approved. */
+  approved: boolean;
+  /** The function call being approved/rejected. */
+  function_call: {
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+}
+
 export type ResponseInputContent =
   | ResponseInputTextParam
   | ResponseInputImageParam
-  | ResponseInputFileParam;
+  | ResponseInputFileParam
+  | ResponseInputFunctionApprovalParam;
 
 export interface EasyInputMessage {
   type?: "message";
@@ -51,7 +68,6 @@ export type ResponseInputParam = ResponseInputItem[];
 // Agent Framework extension fields (matches backend AgentFrameworkExtraBody)
 export interface AgentFrameworkExtraBody {
   entity_id: string;
-  thread_id?: string;
   input_data?: Record<string, unknown>;
 }
 
@@ -60,6 +76,9 @@ export interface AgentFrameworkRequest {
   model: string;
   input: string | ResponseInputParam; // Union type matching OpenAI
   stream?: boolean;
+
+  // OpenAI conversation parameter (standard!)
+  conversation?: string | { id: string };
 
   // Common OpenAI optional fields
   instructions?: string;
@@ -223,14 +242,16 @@ export interface ChatResponseUpdate {
   response_id?: string;
   message_id?: string;
   conversation_id?: string;
-  ai_model_id?: string;
+  model_id?: string;
   created_at?: CreatedAtT;
   finish_reason?: FinishReason;
   additional_properties?: Record<string, unknown>;
   raw_representation?: unknown;
 }
 
-// Agent thread
+// Agent thread (internal AgentFramework type - not exposed via DevUI API)
+// Note: DevUI uses OpenAI Conversations API. This type represents the internal
+// AgentThread used by the framework for execution, wrapped by ConversationStore.
 export interface AgentThread {
   service_thread_id?: string;
   message_store?: unknown; // ChatMessageStore - could be typed further if needed
@@ -238,9 +259,10 @@ export interface AgentThread {
 
 // Workflow events
 export interface WorkflowEvent {
-  type?: string; // Event class name like "WorkflowCompletedEvent", "ExecutorInvokedEvent", etc.
+  type?: string; // Event class name like "WorkflowOutputEvent", "WorkflowCompletedEvent", "ExecutorInvokedEvent", etc.
   data?: unknown;
   executor_id?: string; // Present for executor-related events
+  source_executor_id?: string; // Present for WorkflowOutputEvent
 }
 
 export interface WorkflowStartedEvent extends WorkflowEvent {
@@ -249,8 +271,14 @@ export interface WorkflowStartedEvent extends WorkflowEvent {
 }
 
 export interface WorkflowCompletedEvent extends WorkflowEvent {
-  // Event-specific data for workflow completion
+  // Event-specific data for workflow completion (legacy)
   readonly event_type: "workflow_completed";
+}
+
+export interface WorkflowOutputEvent extends WorkflowEvent {
+  // Event-specific data for workflow output (new)
+  readonly event_type: "workflow_output";
+  source_executor_id: string; // ID of executor that yielded the output
 }
 
 export interface WorkflowWarningEvent extends WorkflowEvent {

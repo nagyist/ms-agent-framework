@@ -3,7 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 import type {
   ExecutorNodeData,
   ExecutorState,
-} from "@/components/workflow/executor-node";
+} from "@/components/features/workflow/executor-node";
 import type {
   ExtendedResponseStreamEvent,
   ResponseWorkflowEventComplete,
@@ -54,7 +54,8 @@ export interface NodeUpdate {
  */
 export function convertWorkflowDumpToNodes(
   workflowDump: Workflow | Record<string, unknown> | undefined,
-  onNodeClick?: (executorId: string, data: ExecutorNodeData) => void
+  onNodeClick?: (executorId: string, data: ExecutorNodeData) => void,
+  layoutDirection?: "LR" | "TB"
 ): Node<ExecutorNodeData>[] {
   if (!workflowDump) {
     console.warn("convertWorkflowDumpToNodes: workflowDump is undefined");
@@ -108,6 +109,7 @@ export function convertWorkflowDumpToNodes(
       name: executor.name || executor.id,
       state: "pending" as ExecutorState,
       isStartNode: executor.id === startExecutorId,
+      layoutDirection: layoutDirection || "LR",
       onNodeClick,
     },
   }));
@@ -307,9 +309,11 @@ export function applyDagreLayout(
  * Process workflow events and extract node updates
  */
 export function processWorkflowEvents(
-  events: ExtendedResponseStreamEvent[]
+  events: ExtendedResponseStreamEvent[],
+  startExecutorId?: string
 ): Record<string, NodeUpdate> {
   const nodeUpdates: Record<string, NodeUpdate> = {};
+  let hasWorkflowStarted = false;
 
   events.forEach((event) => {
     if (
@@ -339,8 +343,11 @@ export function processWorkflowEvents(
         error = typeof eventData === "string" ? eventData : "Execution failed";
       } else if (eventType?.includes("Cancel")) {
         state = "cancelled";
-      } else if (eventType === "WorkflowCompletedEvent") {
+      } else if (eventType === "WorkflowCompletedEvent" || eventType === "WorkflowOutputEvent") {
         state = "completed";
+      } else if (eventType === "WorkflowStartedEvent") {
+        // Mark that workflow has started - we'll set start node to running
+        hasWorkflowStarted = true;
       }
 
       // Update the node state (keep most recent update per executor)
@@ -355,6 +362,18 @@ export function processWorkflowEvents(
       }
     }
   });
+
+  // If workflow has started and we have a start executor, set it to running
+  // (unless it already has a specific state from an ExecutorInvokedEvent)
+  if (hasWorkflowStarted && startExecutorId && !nodeUpdates[startExecutorId]) {
+    nodeUpdates[startExecutorId] = {
+      nodeId: startExecutorId,
+      state: "running",
+      data: undefined,
+      error: undefined,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   return nodeUpdates;
 }
@@ -376,6 +395,8 @@ export function updateNodesWithEvents(
           state: update.state,
           outputData: update.data,
           error: update.error,
+          // Preserve layoutDirection
+          layoutDirection: node.data.layoutDirection,
         },
       };
     }
@@ -478,7 +499,7 @@ export function updateEdgesWithSequenceAnalysis(
     // Active edge: source completed and target is currently executing
     if (sourceState?.completed && targetIsExecuting) {
       style = {
-        stroke: "#3b82f6", // Blue
+        stroke: "#643FB2", // Purple accent
         strokeWidth: 3,
         strokeDasharray: "5,5",
       };

@@ -15,14 +15,15 @@ namespace Microsoft.Agents.AI.Workflows.Declarative.ObjectModel;
 internal sealed class AddConversationMessageExecutor(AddConversationMessage model, WorkflowAgentProvider agentProvider, WorkflowFormulaState state) :
     DeclarativeActionExecutor<AddConversationMessage>(model, state)
 {
-    protected override async ValueTask<object?> ExecuteAsync(IWorkflowContext context, CancellationToken cancellationToken)
+    protected override async ValueTask<object?> ExecuteAsync(IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(this.Model.ConversationId, $"{nameof(this.Model)}.{nameof(this.Model.ConversationId)}");
         string conversationId = this.Evaluator.GetValue(this.Model.ConversationId).Value;
 
         ChatMessage newMessage = new(this.Model.Role.Value.ToChatRole(), [.. this.GetContent()]) { AdditionalProperties = this.GetMetadata() };
 
-        await agentProvider.CreateMessageAsync(conversationId, newMessage, cancellationToken).ConfigureAwait(false);
+        // Capture the created message, which includes the assigned ID.
+        newMessage = await agentProvider.CreateMessageAsync(conversationId, newMessage, cancellationToken).ConfigureAwait(false);
 
         await this.AssignAsync(this.Model.Message?.Path, newMessage.ToRecord(), context).ConfigureAwait(false);
 

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI.Workflows.Declarative.Extensions;
+using Microsoft.Agents.AI.Workflows.Declarative.Kit;
 using Microsoft.Bot.ObjectModel;
 using Microsoft.PowerFx;
 using Microsoft.PowerFx.Types;
@@ -71,10 +72,10 @@ internal sealed class WorkflowFormulaState
 
         async Task ReadScopeAsync(string scopeName)
         {
-            HashSet<string> keys = await context.ReadStateKeysAsync(scopeName).ConfigureAwait(false);
+            HashSet<string> keys = await context.ReadStateKeysAsync(scopeName, cancellationToken).ConfigureAwait(false);
             foreach (string key in keys)
             {
-                object? value = await context.ReadStateAsync<object>(key, scopeName).ConfigureAwait(false);
+                object? value = await context.ReadStateAsync<object>(key, scopeName, cancellationToken).ConfigureAwait(false);
                 if (value is null or UnassignedValue)
                 {
                     value = FormulaValue.NewBlank();
@@ -120,10 +121,7 @@ internal sealed class WorkflowFormulaState
 
     public static string GetScopeName(string? scopeName)
     {
-        if (!ProductContext.IsLocalScopeSupported())
-        {
-            ProductContext.SetContext(Product.Foundry);
-        }
+        WorkflowDiagnostics.SetFoundryProduct();
 
         scopeName ??= DefaultScopeName;
 

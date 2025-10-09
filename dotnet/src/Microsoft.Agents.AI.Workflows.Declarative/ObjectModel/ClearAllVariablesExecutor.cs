@@ -13,7 +13,7 @@ namespace Microsoft.Agents.AI.Workflows.Declarative.ObjectModel;
 internal sealed class ClearAllVariablesExecutor(ClearAllVariables model, WorkflowFormulaState state)
     : DeclarativeActionExecutor<ClearAllVariables>(model, state)
 {
-    protected override async ValueTask<object?> ExecuteAsync(IWorkflowContext context, CancellationToken cancellationToken)
+    protected override async ValueTask<object?> ExecuteAsync(IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         EvaluationResult<VariablesToClearWrapper> variablesResult = this.Evaluator.GetValue(this.Model.Variables);
 
@@ -28,7 +28,7 @@ internal sealed class ClearAllVariablesExecutor(ClearAllVariables model, Workflo
 
         if (scope is not null)
         {
-            await context.QueueClearScopeAsync(scope).ConfigureAwait(false);
+            await context.QueueClearScopeAsync(scope, cancellationToken).ConfigureAwait(false);
             Debug.WriteLine(
                 $"""
                 STATE: {this.GetType().Name} [{this.Id}]

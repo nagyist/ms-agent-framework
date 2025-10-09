@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,38 +12,49 @@ namespace Microsoft.Agents.AI.Workflows.Declarative.IntegrationTests;
 /// <summary>
 /// Tests execution of workflow created by <see cref="DeclarativeWorkflowBuilder"/>.
 /// </summary>
-[Collection("Global")]
 public sealed class DeclarativeWorkflowTest(ITestOutputHelper output) : WorkflowTest(output)
 {
     [Theory]
     [InlineData("SendActivity.yaml", "SendActivity.json")]
     [InlineData("InvokeAgent.yaml", "InvokeAgent.json")]
+    [InlineData("InvokeAgent.yaml", "InvokeAgent.json", true)]
     [InlineData("ConversationMessages.yaml", "ConversationMessages.json")]
-    public Task ValidateCaseAsync(string workflowFileName, string testcaseFileName) =>
-        this.RunWorkflowAsync(Path.Combine("Workflows", workflowFileName), testcaseFileName);
+    [InlineData("ConversationMessages.yaml", "ConversationMessages.json", true)]
+    public Task ValidateCaseAsync(string workflowFileName, string testcaseFileName, bool externalConveration = false) =>
+        this.RunWorkflowAsync(Path.Combine(Environment.CurrentDirectory, "Workflows", workflowFileName), testcaseFileName, externalConveration);
 
     [Theory]
     [InlineData("Marketing.yaml", "Marketing.json")]
-    [InlineData("MathChat.yaml", "MathChat.json")]
-    [InlineData("DeepResearch.yaml", "DeepResearch.json")]
-    [InlineData("HumanInLoop.yaml", "HumanInLoop.json", Skip = "TODO")]
-    public Task ValidateScenarioAsync(string workflowFileName, string testcaseFileName) =>
-        this.RunWorkflowAsync(Path.Combine(GetRepoFolder(), "workflow-samples", workflowFileName), testcaseFileName);
+    [InlineData("Marketing.yaml", "Marketing.json", true)]
+    [InlineData("MathChat.yaml", "MathChat.json", true)]
+    [InlineData("DeepResearch.yaml", "DeepResearch.json", Skip = "Long running")]
+    [InlineData("HumanInLoop.yaml", "HumanInLoop.json")]
+    public Task ValidateScenarioAsync(string workflowFileName, string testcaseFileName, bool externalConveration = false) =>
+        this.RunWorkflowAsync(Path.Combine(GetRepoFolder(), "workflow-samples", workflowFileName), testcaseFileName, externalConveration);
 
-    protected override async Task RunAndVerifyAsync<TInput>(Testcase testcase, string workflowPath, DeclarativeWorkflowOptions workflowOptions)
+    protected override async Task RunAndVerifyAsync<TInput>(Testcase testcase, string workflowPath, DeclarativeWorkflowOptions workflowOptions, TInput input)
     {
         Workflow workflow = DeclarativeWorkflowBuilder.Build<TInput>(workflowPath, workflowOptions);
 
-        WorkflowEvents workflowEvents = await WorkflowHarness.RunAsync(workflow, (TInput)GetInput<TInput>(testcase));
-        foreach (DeclarativeActionInvokedEvent actionInvokeEvent in workflowEvents.ActionInvokeEvents)
-        {
-            this.Output.WriteLine($"ACTION: {actionInvokeEvent.ActionId} [{actionInvokeEvent.ActionType}]");
-        }
+        WorkflowHarness harness = new(workflow, runId: Path.GetFileNameWithoutExtension(workflowPath));
+        WorkflowEvents workflowEvents = await harness.RunTestcaseAsync(testcase, input).ConfigureAwait(false);
 
+        // Verify executor events are present
         Assert.NotEmpty(workflowEvents.ExecutorInvokeEvents);
         Assert.NotEmpty(workflowEvents.ExecutorCompleteEvents);
+        // Verify the associated conversations
+        AssertWorkflow.Conversation(workflowOptions.ConversationId, workflowEvents.ConversationEvents, testcase);
+        // Verify the agent responses
+        AssertWorkflow.Responses(workflowEvents.AgentResponseEvents, testcase);
+        // Verify the messages on the workflow conversation
+        await AssertWorkflow.MessagesAsync(
+            GetConversationId(workflowOptions.ConversationId, workflowEvents.ConversationEvents),
+            testcase,
+            workflowOptions.AgentProvider);
+        // Verify action events
         AssertWorkflow.EventCounts(workflowEvents.ActionInvokeEvents.Count, testcase);
-        AssertWorkflow.EventCounts(workflowEvents.ActionCompleteEvents.Count, testcase);
+        AssertWorkflow.EventCounts(workflowEvents.ActionCompleteEvents.Count, testcase, isCompletion: true);
+        // Verify action sequences
         AssertWorkflow.EventSequence(workflowEvents.ActionInvokeEvents.Select(e => e.ActionId), testcase);
     }
 }

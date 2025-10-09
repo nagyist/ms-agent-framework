@@ -1,7 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Agents.AI.Workflows.Reflection;
 
@@ -13,18 +11,18 @@ internal static class WorkflowHelper
     /// Get a workflow that plays a number guessing game with human-in-the-loop interaction.
     /// An input port allows the external world to provide inputs to the workflow upon requests.
     /// </summary>
-    internal static ValueTask<Workflow<NumberSignal>> GetWorkflowAsync()
+    internal static ValueTask<Workflow<SignalWithNumber>> GetWorkflowAsync()
     {
         // Create the executors
-        InputPort numberInputPort = InputPort.Create<SignalWithNumber, int>("GuessNumber");
+        RequestPort numberRequest = RequestPort.Create<SignalWithNumber, int>("GuessNumber");
         JudgeExecutor judgeExecutor = new(42);
 
         // Build the workflow by connecting executors in a loop
-        return new WorkflowBuilder(numberInputPort)
-            .AddEdge(numberInputPort, judgeExecutor)
-            .AddEdge(judgeExecutor, numberInputPort)
+        return new WorkflowBuilder(numberRequest)
+            .AddEdge(numberRequest, judgeExecutor)
+            .AddEdge(judgeExecutor, numberRequest)
             .WithOutputFrom(judgeExecutor)
-            .BuildAsync<NumberSignal>();
+            .BuildAsync<SignalWithNumber>();
     }
 }
 
@@ -71,21 +69,21 @@ internal sealed class JudgeExecutor() : ReflectingExecutor<JudgeExecutor>("Judge
         this._targetNumber = targetNumber;
     }
 
-    public async ValueTask HandleAsync(int message, IWorkflowContext context)
+    public async ValueTask HandleAsync(int message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         this._tries++;
         if (message == this._targetNumber)
         {
-            await context.YieldOutputAsync($"{this._targetNumber} found in {this._tries} tries!")
+            await context.YieldOutputAsync($"{this._targetNumber} found in {this._tries} tries!", cancellationToken)
                          .ConfigureAwait(false);
         }
         else if (message < this._targetNumber)
         {
-            await context.SendMessageAsync(new SignalWithNumber(NumberSignal.Below, message)).ConfigureAwait(false);
+            await context.SendMessageAsync(new SignalWithNumber(NumberSignal.Below, message), cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            await context.SendMessageAsync(new SignalWithNumber(NumberSignal.Above, message)).ConfigureAwait(false);
+            await context.SendMessageAsync(new SignalWithNumber(NumberSignal.Above, message), cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -93,13 +91,13 @@ internal sealed class JudgeExecutor() : ReflectingExecutor<JudgeExecutor>("Judge
     /// Checkpoint the current state of the executor.
     /// This must be overridden to save any state that is needed to resume the executor.
     /// </summary>
-    protected override ValueTask OnCheckpointingAsync(IWorkflowContext context, CancellationToken cancellation = default) =>
-        context.QueueStateUpdateAsync(StateKey, this._tries);
+    protected override ValueTask OnCheckpointingAsync(IWorkflowContext context, CancellationToken cancellationToken = default) =>
+        context.QueueStateUpdateAsync(StateKey, this._tries, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Restore the state of the executor from a checkpoint.
     /// This must be overridden to restore any state that was saved during checkpointing.
     /// </summary>
-    protected override async ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellation = default) =>
-        this._tries = await context.ReadStateAsync<int>(StateKey).ConfigureAwait(false);
+    protected override async ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellationToken = default) =>
+        this._tries = await context.ReadStateAsync<int>(StateKey, cancellationToken: cancellationToken).ConfigureAwait(false);
 }

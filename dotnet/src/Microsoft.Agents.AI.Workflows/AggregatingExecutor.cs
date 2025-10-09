@@ -28,25 +28,25 @@ public class AggregatingExecutor<TInput, TAggregate>(string id,
     private TAggregate? _runningAggregate;
 
     /// <inheritdoc/>
-    public override ValueTask<TAggregate?> HandleAsync(TInput message, IWorkflowContext context)
+    public override ValueTask<TAggregate?> HandleAsync(TInput message, IWorkflowContext context, CancellationToken cancellationToken = default)
     {
         this._runningAggregate = aggregator(this._runningAggregate, message);
         return new(this._runningAggregate);
     }
 
     /// <inheritdoc/>
-    protected internal override async ValueTask OnCheckpointingAsync(IWorkflowContext context, CancellationToken cancellation = default)
+    protected internal override async ValueTask OnCheckpointingAsync(IWorkflowContext context, CancellationToken cancellationToken = default)
     {
-        await context.QueueStateUpdateAsync(AggregateStateKey, this._runningAggregate).ConfigureAwait(false);
+        await context.QueueStateUpdateAsync(AggregateStateKey, this._runningAggregate, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        await base.OnCheckpointingAsync(context, cancellation).ConfigureAwait(false);
+        await base.OnCheckpointingAsync(context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
-    protected internal override async ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellation = default)
+    protected internal override async ValueTask OnCheckpointRestoredAsync(IWorkflowContext context, CancellationToken cancellationToken = default)
     {
-        await base.OnCheckpointRestoredAsync(context, cancellation).ConfigureAwait(false);
+        await base.OnCheckpointRestoredAsync(context, cancellationToken).ConfigureAwait(false);
 
-        this._runningAggregate = await context.ReadStateAsync<TAggregate>(AggregateStateKey).ConfigureAwait(false);
+        this._runningAggregate = await context.ReadStateAsync<TAggregate>(AggregateStateKey, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }
