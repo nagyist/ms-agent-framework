@@ -649,8 +649,6 @@ async def test_azure_responses_client_file_search_streaming() -> None:
 
 def test_azure_responses_content_parser_error_content() -> None:
     """Test _openai_content_parser with ErrorContent."""
-    from agent_framework import ErrorContent
-
     client = AzureOpenAIResponsesClient(model_id="test-model")
 
     # Test ErrorContent - should return empty dict (unsupported for sending)
@@ -661,8 +659,6 @@ def test_azure_responses_content_parser_error_content() -> None:
 
 def test_azure_responses_content_parser_usage_content() -> None:
     """Test _openai_content_parser with UsageContent."""
-    from agent_framework import UsageContent, UsageDetails
-
     client = AzureOpenAIResponsesClient(model_id="test-model")
 
     # Test UsageContent - should return empty dict (unsupported for sending, only received)
@@ -675,8 +671,6 @@ def test_azure_responses_content_parser_usage_content() -> None:
 
 def test_azure_responses_content_parser_application_file() -> None:
     """Test _openai_content_parser with application/* DataContent/UriContent."""
-    from agent_framework import DataContent, UriContent
-
     client = AzureOpenAIResponsesClient(model_id="test-model")
 
     # Test PDF file with DataContent
@@ -703,8 +697,6 @@ def test_azure_responses_content_parser_application_file() -> None:
 
 def test_azure_responses_content_parser_text_reasoning() -> None:
     """Test _openai_content_parser with TextReasoningContent."""
-    from agent_framework import TextReasoningContent
-
     client = AzureOpenAIResponsesClient(model_id="test-model")
 
     # Test TextReasoningContent

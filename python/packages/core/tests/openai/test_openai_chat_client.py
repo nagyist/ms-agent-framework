@@ -867,7 +867,6 @@ def test_openai_content_parser_document_file_mapping(openai_unit_test_env: dict[
 
 def test_openai_content_parser_error_content(openai_unit_test_env: dict[str, str]) -> None:
     """Test _openai_content_parser with ErrorContent."""
-    from agent_framework import ErrorContent
 
     client = OpenAIChatClient()
 
@@ -881,7 +880,6 @@ def test_openai_content_parser_error_content(openai_unit_test_env: dict[str, str
 
 def test_openai_content_parser_usage_content(openai_unit_test_env: dict[str, str]) -> None:
     """Test _openai_content_parser with UsageContent."""
-    from agent_framework import UsageDetails
 
     client = OpenAIChatClient()
 

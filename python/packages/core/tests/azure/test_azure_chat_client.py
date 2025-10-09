@@ -849,8 +849,6 @@ async def test_azure_chat_client_agent_level_tool_persistence():
 
 def test_azure_chat_content_parser_error_content(azure_openai_unit_test_env: dict[str, str]) -> None:
     """Test _openai_content_parser with ErrorContent."""
-    from agent_framework import ErrorContent
-
     client = AzureOpenAIChatClient()
 
     # Test ErrorContent - should fall back to to_dict
@@ -863,8 +861,6 @@ def test_azure_chat_content_parser_error_content(azure_openai_unit_test_env: dic
 
 def test_azure_chat_content_parser_usage_content(azure_openai_unit_test_env: dict[str, str]) -> None:
     """Test _openai_content_parser with UsageContent."""
-    from agent_framework import UsageContent, UsageDetails
-
     client = AzureOpenAIChatClient()
 
     # Test UsageContent - should fall back to to_dict (unsupported for sending, only received)

@@ -2106,8 +2106,6 @@ def test_openai_responses_client_with_callable_api_key() -> None:
 
 def test_openai_content_parser_error_content() -> None:
     """Test _openai_content_parser with ErrorContent."""
-    from agent_framework import ErrorContent
-
     client = OpenAIResponsesClient(model_id="test-model", api_key="test-key")
 
     # Test ErrorContent - should return empty dict (unsupported for sending)
@@ -2118,8 +2116,6 @@ def test_openai_content_parser_error_content() -> None:
 
 def test_openai_content_parser_usage_content() -> None:
     """Test _openai_content_parser with UsageContent."""
-    from agent_framework import UsageDetails
-
     client = OpenAIResponsesClient(model_id="test-model", api_key="test-key")
 
     # Test UsageContent - should return empty dict (unsupported for sending, only received)
