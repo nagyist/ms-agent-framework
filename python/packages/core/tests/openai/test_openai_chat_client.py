@@ -23,6 +23,7 @@ from agent_framework import (
     TextContent,
     ToolProtocol,
     UsageContent,
+    UsageDetails,
     ai_function,
     prepare_function_call_results,
 )
