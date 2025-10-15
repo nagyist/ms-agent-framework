@@ -203,79 +203,60 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
 
       setLoadingConversations(true);
       try {
-        // Step 1: Try to list conversations from backend (DevUI extension)
-        // This works with DevUI backend but fails with OpenAI/Azure (they don't have list endpoint)
+        // Step 1: Always try to list conversations from backend first
+        // This ensures we get the latest data from the server
         try {
           const { data: conversations } = await apiClient.listConversations(
             selectedAgent.id
           );
 
+          // Backend successfully returned conversations list
+          setAvailableConversations(conversations);
+          
           if (conversations.length > 0) {
             // Found conversations on backend - use most recent
             const mostRecent = conversations[0];
-            setAvailableConversations(conversations);
             setCurrentConversation(mostRecent);
 
             // Load conversation items from backend
             try {
+              console.log(`Loading conversation items for: ${mostRecent.id}`);
               const { data: items } = await apiClient.listConversationItems(
-                mostRecent.id
+                mostRecent.id,
+                { order: "asc" } // Load in chronological order (oldest first)
               );
 
+              console.log(`Loaded ${items.length} items from conversation ${mostRecent.id}`);
               // Use OpenAI ConversationItems directly (no conversion!)
               setChatState({
                 items: items as import("@/types/openai").ConversationItem[],
                 isStreaming: false
               });
-            } catch {
+            } catch (error) {
+              console.error(`Failed to load conversation items for ${mostRecent.id}:`, error);
               setChatState({ items: [], isStreaming: false });
             }
 
-            // Cache to localStorage for faster future loads
-            localStorage.setItem(
-              `devui_convs_${selectedAgent.id}`,
-              JSON.stringify(conversations)
-            );
+            return;
+          } else {
+            // Backend returned empty list - create new conversation
+            const newConversation = await apiClient.createConversation({
+              agent_id: selectedAgent.id,
+            });
+
+            setCurrentConversation(newConversation);
+            setAvailableConversations([newConversation]);
+            setChatState({ items: [], isStreaming: false });
+
             return;
           }
-        } catch {
-          // Backend doesn't support list endpoint (OpenAI, Azure, etc.)
-          // This is expected - fall through to localStorage
+        } catch (error) {
+          // Backend request failed
+          console.error("Failed to load conversations from backend:", error);
+          throw error; // Re-throw to outer catch block
         }
-
-        // Step 2: Try localStorage (works with all backends)
-        const cachedKey = `devui_convs_${selectedAgent.id}`;
-        const cached = localStorage.getItem(cachedKey);
-
-        if (cached) {
-          try {
-            const convs = JSON.parse(cached) as Conversation[];
-
-            if (convs.length > 0) {
-              // Use most recent cached conversation
-              setAvailableConversations(convs);
-              setCurrentConversation(convs[0]);
-              setChatState({ items: [], isStreaming: false });
-              return;
-            }
-          } catch {
-            // Invalid cache - clear it
-            localStorage.removeItem(cachedKey);
-          }
-        }
-
-        // Step 3: No conversations found - create new
-        const newConversation = await apiClient.createConversation({
-          agent_id: selectedAgent.id,
-        });
-
-        setCurrentConversation(newConversation);
-        setAvailableConversations([newConversation]);
-        setChatState({ items: [], isStreaming: false });
-
-        // Save to localStorage
-        localStorage.setItem(cachedKey, JSON.stringify([newConversation]));
-      } catch {
+      } catch (error) {
+        console.error("Failed to initialize conversations:", error);
         setAvailableConversations([]);
         setChatState({ items: [], isStreaming: false });
       } finally {
@@ -530,15 +511,10 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
       });
       setConversationUsage({ total_tokens: 0, message_count: 0 });
       accumulatedText.current = "";
-
-      // Update localStorage cache with new conversation
-      const cachedKey = `devui_convs_${selectedAgent.id}`;
-      const updated = [newConversation, ...availableConversations];
-      localStorage.setItem(cachedKey, JSON.stringify(updated));
     } catch {
       // Failed to create conversation
     }
-  }, [selectedAgent, availableConversations]);
+  }, [selectedAgent]);
 
   // Handle conversation deletion
   const handleDeleteConversation = useCallback(
@@ -562,15 +538,6 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
             (c) => c.id !== conversationId
           );
           setAvailableConversations(updatedConversations);
-
-          // Update localStorage cache
-          if (selectedAgent) {
-            const cachedKey = `devui_convs_${selectedAgent.id}`;
-            localStorage.setItem(
-              cachedKey,
-              JSON.stringify(updatedConversations)
-            );
-          }
 
           // If deleted conversation was selected, switch to another conversation or clear chat
           if (currentConversation?.id === conversationId) {
@@ -601,7 +568,7 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
         alert("Failed to delete conversation. Please try again.");
       }
     },
-    [availableConversations, currentConversation, selectedAgent, onDebugEvent]
+    [availableConversations, currentConversation, onDebugEvent]
   );
 
   // Handle conversation selection
@@ -619,7 +586,9 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
 
       try {
         // Load conversation history from backend
-        const result = await apiClient.listConversationItems(conversationId);
+        const result = await apiClient.listConversationItems(conversationId, {
+          order: "asc", // Load in chronological order (oldest first)
+        });
 
         // Use OpenAI ConversationItems directly (no conversion!)
         const items = result.data as import("@/types/openai").ConversationItem[];

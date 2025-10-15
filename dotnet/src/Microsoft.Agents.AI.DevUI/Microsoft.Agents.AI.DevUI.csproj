@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Microsoft.Agents.AI.DevUI</RootNamespace>
+    <OutputType>Library</OutputType>
+    
+    <!-- Enable packaging -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Microsoft.Agents.AI.DevUI</PackageId>
+    <Description>Developer UI components for Microsoft Agent Framework. This package contains pre-built static web assets (HTML, CSS, JavaScript) built with React and Vite that are served using ASP.NET Core's built-in static file middleware.</Description>
+
+    <PackageTags>AI, Agent, Web, UI, DevUI, Chat, Vite, React, Developer Tools</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference frontend files directly from the Python package's build output -->
+    <EmbeddedResource Include="..\..\..\python\packages\devui\agent_framework_devui\ui\**\*">
+      <Link>resources\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Import nuget packaging properties -->
+  <Import Project="..\..\nuget\nuget-package.props" />
+
+  <!-- Import frontend web assets build targets -->
+  <Import Project="Microsoft.Agents.AI.DevUI.Frontend.targets" />
+
+</Project>

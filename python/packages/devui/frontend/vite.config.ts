@@ -5,6 +5,7 @@ import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -20,6 +21,10 @@ export default defineConfig({
         manualChunks: undefined,
         // Ensure everything goes into a single JS file
         inlineDynamicImports: true,
+        // Use static filenames instead of content hashes
+        entryFileNames: "assets/index.js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name].[ext]",
       },
     },
   },
