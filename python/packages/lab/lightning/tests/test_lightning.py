@@ -11,9 +11,8 @@ from agent_framework import (
     WorkflowBuilder,
 )
 from agent_framework.openai import OpenAIChatClient
-from agent_framework_lab_lightning import init
-from agentlightning.adapter import TraceTripletAdapter
-from agentlightning.tracer import AgentOpsTracer
+from agent_framework.lab.lightning import AgentFrameworkTracer
+from agentlightning import TracerTraceToTriplet
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion import Choice
 
@@ -124,30 +123,28 @@ async def test_observability(workflow_two_agents):
             |                    |
         [chat gpt-4o]        [chat gpt-4o]
     """
-    init()
-
-    tracer = AgentOpsTracer()
+    tracer = AgentFrameworkTracer()
     try:
         tracer.init()
         tracer.init_worker(0)
 
-        with tracer.trace_context():
+        async with tracer.trace_context():
             await workflow_two_agents.run("Please analyze the quarterly sales data")
 
-        triplets = TraceTripletAdapter(agent_match=None, llm_call_match="chat").adapt(tracer.get_last_trace())
+        triplets = TracerTraceToTriplet(agent_match=None, llm_call_match="chat").adapt(tracer.get_last_trace())
         assert len(triplets) == 2
 
-        triplets = TraceTripletAdapter(agent_match="analyzer", llm_call_match="chat").adapt(tracer.get_last_trace())
+        triplets = TracerTraceToTriplet(agent_match="analyzer", llm_call_match="chat").adapt(tracer.get_last_trace())
         assert len(triplets) == 1
 
-        triplets = TraceTripletAdapter(agent_match="advisor", llm_call_match="chat").adapt(tracer.get_last_trace())
+        triplets = TracerTraceToTriplet(agent_match="advisor", llm_call_match="chat").adapt(tracer.get_last_trace())
         assert len(triplets) == 1
 
         # Parent agent is not matched
-        triplets = TraceTripletAdapter(agent_match="DataAnalyzer", llm_call_match="chat").adapt(tracer.get_last_trace())
+        triplets = TracerTraceToTriplet(agent_match="DataAnalyzer", llm_call_match="chat").adapt(tracer.get_last_trace())
         assert len(triplets) == 0
 
-        triplets = TraceTripletAdapter(agent_match="InvestmentAdvisor|advisor", llm_call_match="chat").adapt(
+        triplets = TracerTraceToTriplet(agent_match="InvestmentAdvisor|advisor", llm_call_match="chat").adapt(
             tracer.get_last_trace()
         )
         assert len(triplets) == 1
