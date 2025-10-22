@@ -303,18 +303,15 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
 
             // Load conversation items from backend
             try {
-              console.log(`Loading conversation items for: ${mostRecent.id}`);
               const { data: items } = await apiClient.listConversationItems(
                 mostRecent.id,
                 { order: "asc" } // Load in chronological order (oldest first)
               );
 
-              console.log(`Loaded ${items.length} items from conversation ${mostRecent.id}`);
               // Use OpenAI ConversationItems directly (no conversion!)
               setChatItems(items as import("@/types/openai").ConversationItem[]);
               setIsStreaming(false);
-            } catch (error) {
-              console.error(`Failed to load conversation items for ${mostRecent.id}:`, error);
+            } catch {
               // 404 means conversation exists but has no items yet (newly created)
               // This is normal - just start with empty chat
               console.debug(`No items found for conversation ${mostRecent.id}, starting fresh`);
@@ -372,8 +369,7 @@ export function AgentView({ selectedAgent, onDebugEvent }: AgentViewProps) {
         setAvailableConversations([newConversation]);
         setChatItems([]);
         setIsStreaming(false);
-      } catch (error) {
-        console.error("Failed to initialize conversations:", error);
+      } catch {
         setAvailableConversations([]);
         setChatItems([]);
         setIsStreaming(false);
