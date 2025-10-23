@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import random
+import time
 import traceback
 from pathlib import Path
 from typing import TypedDict, cast
@@ -213,7 +214,7 @@ def debug():
         tau2_agent.rollout_async(
             train_dataset[0],
             resources={"main_llm": LLM(model="gpt-4.1", endpoint=openai_base_url)},
-            rollout=Rollout(rollout_id="dummy"),
+            rollout=Rollout(rollout_id="dummy", input="dummy_input", start_time=time.time()),
         )
     )
 
