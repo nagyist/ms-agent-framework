@@ -30,18 +30,18 @@ Due to the alignment between `InvokeInlineAgent` and `InvokeAzureAgent`, a share
     capabilities:
       codeInterpeter: true      
   input:
-	messages: =UserMessage("Hi!")
-	parameters:
-	  - name: location
-	    value: Seattle, WA, USA
-	  - name: now
-	    value: =System.CurrentDateTime
+    messages: =UserMessage("Hi!")
+    parameters:
+      - name: location
+        value: Seattle, WA, USA
+      - name: now
+        value: =System.CurrentDateTime
   output:
     autoSend: true
     messages: =Local.AgentResponse
-	format:
-	  object: Local.AgentResponseObject
-	  schema: |-
+    format:
+      object: Local.AgentResponseObject
+      schema: |-
         {
           "type": "object",
           "properties": {
@@ -49,14 +49,14 @@ Due to the alignment between `InvokeInlineAgent` and `InvokeAzureAgent`, a share
           },
           "required": [...],
           "additionalProperties": false
-        }	
+        }    
     parameters:
-	  - name: isComplete
-	    variable: Local.IsComplete 	  
+      - name: isComplete
+        variable: Local.IsComplete       
   user:
     variable: Local.UserInput
-	when: =!Local.IsComplete
-	maxIterations: 4
+    when: =!Local.IsComplete
+    maxIterations: 4
 ```
 
 Since the `InvokeInlineAgent` action inherits from `InvokeAgentBase`, please refer to the `InvokeAzureAgent` action for details on all other properties.

@@ -21,8 +21,8 @@ The current version of `InvokeAzureAgent` was pared down to only support basic m
     name: asst_abc123
   input:
     additionalInstructions: |-
-	  The user is located in Seattle, Washington, USA.
-	messages: =UserMessage("Hi!")
+      The user is located in Seattle, Washington, USA.
+    messages: =UserMessage("Hi!")
   output:
     autoSend: true
     messages: =Local.AgentResponse
@@ -40,20 +40,20 @@ as well as re-adding support for _Response Format_ that is supported in existing
   conversationId: =System.ConversationId
   agent:
     name: DemoAgent
-	version: 5
+    version: 5
   input:
-	messages: =UserMessage("Hi!")
-	parameters:
-	  - name: location
-	    value: Seattle, WA, USA
-	  - name: now
-	    value: =System.CurrentDateTime
+    messages: =UserMessage("Hi!")
+    parameters:
+      - name: location
+        value: Seattle, WA, USA
+      - name: now
+        value: =System.CurrentDateTime
   output:
     autoSend: true
     messages: =Local.AgentResponse
-	format:
-	  object: Local.AgentResponseObject
-	  schema: |-
+    format:
+      object: Local.AgentResponseObject
+      schema: |-
         {
           "type": "object",
           "properties": {
@@ -61,14 +61,14 @@ as well as re-adding support for _Response Format_ that is supported in existing
           },
           "required": [...],
           "additionalProperties": false
-        }	
+        }    
     parameters:
-	  - name: isComplete
-	    variable: Local.IsComplete 	  
+      - name: isComplete
+        variable: Local.IsComplete       
   user:
     variable: Local.UserInput
-	when: =!Local.IsComplete
-	maxIterations: 4
+    when: =!Local.IsComplete
+    maxIterations: 4
 ```
 
 Property|Type|Description|Required|Default
@@ -124,8 +124,8 @@ The raw message is still available via the `messages` output property.
   output:
     messages: Local.AgentResponse
     format:
-	  object: Local.AgentResponseObject
-	  schema: |-
+      object: Local.AgentResponseObject
+      schema: |-
         {
           "type": "object",
           "properties": {
@@ -172,10 +172,10 @@ Values for structured inputs can be provided to the agent as literal values or e
   input:
     messages: =UserMessage("Where a good place to hike?")
     parameters:
-	  - name: location
-	    value: Seattle, WA, USA
-	  - name: now
-	    value: =System.CurrentDateTime    
+      - name: location
+        value: Seattle, WA, USA
+      - name: now
+        value: =System.CurrentDateTime    
   output:
     messages: Local.AgentResponse
 ```
@@ -192,10 +192,10 @@ Values for structued outputs can be captured to scoped variables.
     name: DemoAgent
   output:
     parameters:
-	  - name: confidence
-	    value: Local.IntentConfidence
-	  - name: intent
-	    value: Local.UserIntent
+      - name: confidence
+        value: Local.IntentConfidence
+      - name: intent
+        value: Local.UserIntent
 ```
 
 #### 4. Human in the Loop: Final message from agent
@@ -210,10 +210,10 @@ then the agent response will be the final message in the invocation loop.
     name: DemoAgent
   output:
     parameters:
-	  - name: confidence
-	    value: Local.IntentConfidence
-	  - name: intent
-	    value: Local.UserIntent
+      - name: confidence
+        value: Local.IntentConfidence
+      - name: intent
+        value: Local.UserIntent
   user:
     when: =Local.IntentConfidence < 0.8
 ```

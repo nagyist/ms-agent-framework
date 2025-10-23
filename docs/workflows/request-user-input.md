@@ -24,7 +24,7 @@ User input shall be provided in the form of a message (`ChatMessage`), which can
 ```
 
 Property|Type|Description|Required|Default
---|--|--|--
+--|--|--|--|--
 `kind`|`string`|The kind of action. Must be `RequestUserInput`.|Required
 `id`|`string`|The unique identifier for the action.|Required
 `conversationId`|`StringExpression`|Identifies the conversation in which the user input will be captured.| Optional|`System.ConversationId`
