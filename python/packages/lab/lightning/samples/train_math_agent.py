@@ -22,7 +22,7 @@ from agent_framework._agents import ChatAgent
 from agent_framework._mcp import MCPStdioTool
 from agent_framework._types import AgentRunResponse
 from agent_framework.lab.lightning import AgentFrameworkTracer
-from agent_framework.openai._chat_client import OpenAIChatClient
+from agent_framework.openai import OpenAIChatClient
 from agentlightning import LLM, Dataset, Trainer, rollout
 from agentlightning.algorithm.verl import VERL
 
