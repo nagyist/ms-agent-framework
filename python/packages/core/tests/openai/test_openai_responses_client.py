@@ -73,7 +73,11 @@ async def create_vector_store(client: OpenAIResponsesClient) -> tuple[str, Hoste
         name="knowledge_base",
         expires_after={"anchor": "last_active_at", "days": 1},
     )
-    result = await client.client.vector_stores.files.create_and_poll(vector_store_id=vector_store.id, file_id=file.id)
+    result = await client.client.vector_stores.files.create_and_poll(
+        vector_store_id=vector_store.id,
+        file_id=file.id,
+        poll_interval_ms=1000,
+    )
     if result.last_error is not None:
         raise Exception(f"Vector store file processing failed with status: {result.last_error.message}")
 
