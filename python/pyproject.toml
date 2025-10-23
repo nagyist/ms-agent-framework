@@ -246,6 +246,13 @@ packages/**/tests
 [tool.poe.tasks.all-tests]
 cmd = "python run_tasks_in_packages_if_exists.py test --exclude packages/lab --exclude packages/devui"
 
+[tool.poe.tasks.azure-ai-tests]
+cmd = """
+pytest --import-mode=importlib
+-n logical --dist loadfile --dist worksteal
+packages/azure-ai/tests
+"""
+
 [tool.poe.tasks.venv]
 cmd = "uv venv --clear --python $python"
 args = [{ name = "python", default = "3.13", options = ['-p', '--python'] }]
