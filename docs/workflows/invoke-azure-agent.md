@@ -72,7 +72,7 @@ as well as re-adding support for _Response Format_ that is supported in existing
 ```
 
 Property|Type|Description|Required|Default
---|--|--|--
+--|--|--|--|--
 `kind`|`string`|The kind of action. Must be `InvokeAzureAgent`.|Required
 `id`|`string`|The unique identifier for the action.|Required
 `conversationId`|`StringExpression`|Identifies the conversation in which agent will participate.|Optional

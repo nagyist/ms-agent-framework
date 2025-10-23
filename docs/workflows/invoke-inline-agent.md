@@ -63,7 +63,7 @@ Since the `InvokeInlineAgent` action inherits from `InvokeAgentBase`, please ref
 The following table summarizes the properties specific to `PromptAgent`:
 
 Property|Type|Description|Required|Default
---|--|--|--
+--|--|--|--|--
 `model`|`Model`|
 `instructions`|`Template`|
 `additionalInstructions`|`Template`|
