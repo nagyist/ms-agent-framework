@@ -52,7 +52,7 @@ as well as re-adding support for _Response Format_ that is supported in existing
     autoSend: true
     messages: =Local.AgentResponse
     format:
-      object: Local.AgentResponseObject
+      variable: Local.AgentResponseObject
       schema: |-
         {
           "type": "object",
@@ -84,9 +84,9 @@ Property|Type|Description|Required|Default
 `output`|`Node`|Defines aspects related to the agent response/output.|Optional
 `output.autoSend`|`BoolExpression`|Indicates whether to automatically include the agent response as part of the workflow (external) conversation.  If `conversationId` property identifies the workflow conversation, setting this to `false` has no impact.|Optional|true
 `output.messages`|`PropertyPath`|The scoped variable to store the agent response messages.|Optional
-`output.structured`|`Node`|Defines the response format|Optional
-`output.structured.schema`|`StringExpression`|The response schema when format is `json_schema`.|Required for `json_schema`
-`output.structured.object`|`PropertyPath`|The scoped variable to store the structured response object.  Only assigned when for `json_object` or `json_schema`|Optional
+`output.format`|`Node`|Defines the response format|Optional
+`output.format.schema`|`StringExpression`|The response schema when format is `json_schema`.|Required for `json_schema`
+`output.format.variable`|`PropertyPath`|The scoped variable to store the structured response object.  Only assigned when for `json_object` or `json_schema`|Optional
 `output.parameters`|`CollectionProperty<StructuredOutput>`|Mapping of structured output parameters from the agent to scoped variables.|Optional
 `user`|`Node`|Defines if human input is needed.|Optional
 `user.when`|`BoolExpression`|Expression that evaluates to true when user input is needed.|Required
@@ -96,14 +96,14 @@ Property|Type|Description|Required|Default
 **StructuredInput**:
 
 Property|Type|Description|Required|Default
---|--|--|--
+--|--|--|--|--
 `name`|`String`|The name of the structured input parameter.|Required
 `value`|`ValueExpression`|The value of the structured input parameter.|Required
 
 **StructuredOutput**:
 
 Property|Type|Description|Required|Default
---|--|--|--
+--|--|--|--|--
 `name`|`String`|The name of the structured output parameter.|Required
 `value`|`PropertyPath`|The variable to assign the value of the structured output parameter.|Required
 
