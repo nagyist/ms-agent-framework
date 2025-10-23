@@ -5,7 +5,7 @@
 import importlib.metadata
 
 from agent_framework.observability import OBSERVABILITY_SETTINGS
-from agentlightning import AgentOpsTracer
+from agentlightning import AgentOpsTracer  # pyright: ignore[reportAttributeAccessIssue]
 
 try:
     __version__ = importlib.metadata.version(__name__)
@@ -14,10 +14,12 @@ except importlib.metadata.PackageNotFoundError:
 
 
 class AgentFrameworkTracer(AgentOpsTracer):
-    """Tracer that enables OpenTelemetry observability for the Agent-framework,
+    """Tracer for Agent-framework.
+
+    Tracer that enables OpenTelemetry observability for the Agent-framework,
     so that the traces are visible to Agent-lightning.
     """
-    
+
     def init(self) -> None:
         """Initialize the agent-framework-lab-lightning for training."""
         OBSERVABILITY_SETTINGS.enable_otel = True
