@@ -1,4 +1,4 @@
-# Request User Input
+# Request User Input 
 
 ### Overview
 
@@ -33,7 +33,7 @@ Property|Type|Description|Required|Default
 
 ### Usage
 
-####    1. Workflow Conversation
+#### 1. Workflow Conversation
 
 When responding within the context of the workflow (external) conversation, 
 the `RequestUserInput` action can be used without specifying the `conversationId` or capturing the actual input:
@@ -43,7 +43,7 @@ the `RequestUserInput` action can be used without specifying the `conversationId
   id: invoke_agent_1
   conversationId: =System.ConversationId
   agent:
-    name: asst_abc123
+    name: DemoAgent
 
 - kind: RequestUserInput
   id: user_input_1
@@ -52,7 +52,7 @@ the `RequestUserInput` action can be used without specifying the `conversationId
   id: invoke_agent_2
   conversationId: =System.ConversationId
   agent:
-    name: asst_abc123
+    name: DemoAgent
 ```
 
 
@@ -67,7 +67,7 @@ This can be accomplished using `System.LastMessage`:
   id: invoke_agent_1
   conversationId: =System.ConversationId
   agent:
-    name: asst_abc123
+    name: DemoAgent
 
 - kind: RequestUserInput
   id: user_input_1
@@ -92,7 +92,7 @@ Or a custom variable (`Local.UserInput`) if the response needs to be preserved:
   id: invoke_agent_1
   conversationId: =System.ConversationId
   agent:
-    name: asst_abc123
+    name: DemoAgent
 
 - kind: RequestUserInput
   id: user_input_1
@@ -125,7 +125,7 @@ Requesting user input for a specific conversation can be accomplished by specify
   id: invoke_agent_1
   conversationId: =Local.InnerConversationId
   agent:
-    name: asst_abc123
+    name: DemoAgent
 
 - kind: RequestUserInput
   id: user_input_1
