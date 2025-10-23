@@ -182,7 +182,7 @@ Values for structured inputs can be provided to the agent as literal values or e
 
 #### 3. Structured Outputs
 
-Values for structued outputs can be captured to scoped variables.
+Values for structured outputs can be captured to scoped variables.
 
 ```yaml
 - kind: InvokeAzureAgent
