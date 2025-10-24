@@ -50,22 +50,10 @@ as well as re-adding support for _Response Format_ that is supported in existing
         value: =System.CurrentDateTime
   output:
     autoSend: true
-    messages: =Local.AgentResponse
-    format:
-      variable: Local.AgentResponseObject
-      schema: |-
-        {
-          "type": "object",
-          "properties": {
-            ...
-          },
-          "required": [...],
-          "additionalProperties": false
-        }    
-    parameters:
-      - name: isComplete
-        variable: Local.IsComplete       
-  user:
+    messages: Local.AgentResponse
+    responseObject: Local.AgentResponseObject
+    structuredOutputs: Local.AgentStructuredOutputs
+  userInLoop:
     variable: Local.UserInput
     when: =!Local.IsComplete
     maxIterations: 4
@@ -82,16 +70,14 @@ Property|Type|Description|Required|Default
 `input.messages`|`Value`|The messages to send to the agent.|Optional
 `input.parameters`|`CollectionProperty<StructuredInput>`|Structured inputs being provided to the agent.|Optional
 `output`|`Node`|Defines aspects related to the agent response/output.|Optional
-`output.autoSend`|`BoolExpression`|Indicates whether to automatically include the agent response as part of the workflow (external) conversation.  If `conversationId` property identifies the workflow conversation, setting this to `false` has no impact.|Optional|true
+`output.autoSend`|`BoolExpression`|Indicates whether to automatically include the agent response as part of the workflow (external) conversation.  If `conversationId` property identifies the workflow conversation, setting this to `false` has no impact.|Optional|
 `output.messages`|`PropertyPath`|The scoped variable to store the agent response messages.|Optional
-`output.format`|`Node`|Defines the response format|Optional
-`output.format.schema`|`StringExpression`|The response schema when format is `json_schema`.|Required for `json_schema`
-`output.format.variable`|`PropertyPath`|The scoped variable to store the structured response object.  Only assigned when for `json_object` or `json_schema`|Optional
-`output.parameters`|`CollectionProperty<StructuredOutput>`|Mapping of structured output parameters from the agent to scoped variables.|Optional
-`user`|`Node`|Defines if human input is needed.|Optional
-`user.when`|`BoolExpression`|Expression that evaluates to true when user input is needed.|Required
-`user.variable`|`PropertyPath`|The scoped variable to store user input.|Optional
-`user.maxIterations`|`IntExpression`|Maximum number of iterations to allow.|Optional
+`output.responseObject`|`PropertyPath`|The scoped variable to store the structured response object.  Only assigned when for agent with response format of `json_object` or `json_schema`|Optional
+`output.structuredOutputs`|`PropertyPath`|Mapping of structured output parameters from the agent to scoped variables.|Optional
+`userInLoop`|`Node`|Defines if human input is needed.|Optional
+`userInLoop.when`|`BoolExpression`|Expression that evaluates to true when user input is needed.|Required
+`userInLoop.variable`|`PropertyPath`|The scoped variable to store user input.|Optional
+`userInLoop.maxIterations`|`IntExpression`|Maximum number of iterations to allow.|Optional|No limit
 
 **StructuredInput**:
 
@@ -100,19 +86,12 @@ Property|Type|Description|Required|Default
 `name`|`String`|The name of the structured input parameter.|Required
 `value`|`ValueExpression`|The value of the structured input parameter.|Required
 
-**StructuredOutput**:
-
-Property|Type|Description|Required|Default
---|--|--|--|--
-`name`|`String`|The name of the structured output parameter.|Required
-`value`|`PropertyPath`|The variable to assign the value of the structured output parameter.|Required
-
 
 ### Usage
 
 #### 1. Response Format - JSON Schema
 
-JSON schema can be provided to define the expected structure of the agent response.
+JSON schema can be part of the agent definition in order to provide a structured agent response.
 The response is provided as an object (record) in a scoped variable.
 The raw message is still available via the `messages` output property.
 
@@ -123,28 +102,7 @@ The raw message is still available via the `messages` output property.
     name: DemoAgent
   output:
     messages: Local.AgentResponse
-    format:
-      object: Local.AgentResponseObject
-      schema: |-
-        {
-          "type": "object",
-          "properties": {
-            "result": {
-              "type": "string",
-              "description": "The main output or conclusion."
-            },
-            "confidence": {
-              "type": "number",
-              "description": "A numeric confidence score representing the model's certainty."
-            },
-            "justification": {
-              "type": "string",
-              "description": "Explanation or reasoning behind the result."
-            }
-          },
-          "required": ["result", "confidence", "justification"],
-          "additionalProperties": false
-        }
+    responseObject: Local.AgentResponseObject
 
 - kind: ConditionGroup
   id: check_completion
@@ -191,17 +149,13 @@ Values for structured outputs can be captured to scoped variables.
   agent:
     name: DemoAgent
   output:
-    parameters:
-      - name: confidence
-        value: Local.IntentConfidence
-      - name: intent
-        value: Local.UserIntent
+    structuredOutputs: Local.StructuredOutputs
 ```
 
-#### 4. Human in the Loop: Final message from agent
+#### 4. Human in the Loop - No limit
 
-When the criteria for soliciting user input is based on the agent response (e.g. low confidence),
-then the agent response will be the final message in the invocation loop.
+The criteria for soliciting user input can be based on the agent response (e.g. low confidence).
+When `maxIterations` is not specified, no limit is enforced.
 
 ```yaml
 - kind: InvokeAzureAgent
@@ -214,13 +168,13 @@ then the agent response will be the final message in the invocation loop.
         value: Local.IntentConfidence
       - name: intent
         value: Local.UserIntent
-  user:
+  userInLoop:
     when: =Local.IntentConfidence < 0.8
 ```
 
-#### 5. Human in the Loop: Final message from user
+#### 5. Human in the Loop - Limit Iterations
 
-When the criteria for soliciting user input is based on the user input,
+Criteria for soliciting user input may also be based on the user input,
 then the user response will be the final message in the invocation loop.
 
 ```yaml
@@ -228,7 +182,8 @@ then the user response will be the final message in the invocation loop.
   id: invoke_agent_1
   agent:
     name: DemoAgent
-  user:
+  userInLoop:
     variable: Local.UserInput
     when: =!IsBlank(Find("APPROVED", Upper(Local.UserInput.Text)))
+    maxIterations: =Env.MaximumInputRequests
 ```

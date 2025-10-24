@@ -3,6 +3,7 @@
 ### Overview
 
 The `RequestUserInput` action is intended to support the ability to explicitly prompt the user for input during a workflow execution. 
+The user input is always in response and within the context of the workflow (external) conversation.
 
 The `InvokeAzureAgent` action supports a streamlined patterns for requesting user input (90%), but there are scenarios where a more explicit approach is needed (10%).
 
@@ -19,7 +20,6 @@ User input shall be provided in the form of a message (`ChatMessage`), which can
 ```yaml
 - kind: RequestUserInput
   id: user_input_1
-  conversationId: conv_123xyz
   variable: Local.UserInput
 ```
 
@@ -27,7 +27,6 @@ Property|Type|Description|Required|Default
 --|--|--|--|--
 `kind`|`string`|The kind of action. Must be `RequestUserInput`.|Required
 `id`|`string`|The unique identifier for the action.|Required
-`conversationId`|`StringExpression`|Identifies the conversation in which the user input will be captured.| Optional|`System.ConversationId`
 `variable`|`PropertyPath`|The scoped variable to store the user input.|Optional
 
 
@@ -111,23 +110,3 @@ Or a custom variable (`Local.UserInput`) if the response needs to be preserved:
           actionId: invoke_agent_1
 ```
 
-
-#### 3. Explicit Conversation
-
-Requesting user input for a specific conversation can be accomplished by specifying the `conversationId` property.
-
-```yaml
-- kind: CreateConversation
-  id: create_inner_conversation
-  conversationId: Local.InnerConversationId
-      
-- kind: InvokeAzureAgent
-  id: invoke_agent_1
-  conversationId: =Local.InnerConversationId
-  agent:
-    name: DemoAgent
-
-- kind: RequestUserInput
-  id: user_input_1
-  conversationId: =Local.InnerConversationId
-```
