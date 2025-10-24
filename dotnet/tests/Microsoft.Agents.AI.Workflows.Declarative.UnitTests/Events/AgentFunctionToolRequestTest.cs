@@ -19,7 +19,7 @@ public sealed class AgentFunctionToolRequestTest(ITestOutputHelper output) : Eve
         AgentFunctionToolRequest copy = VerifyEventSerialization(new AgentFunctionToolRequest("testagent", []));
 
         // Assert
-        Assert.Equal(copy.AgentName, copy.AgentName);
+        Assert.Equal("testagent", copy.AgentName);
         Assert.Empty(copy.FunctionCalls);
     }
 

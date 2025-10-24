@@ -18,7 +18,7 @@ public sealed class AgentFunctionToolResponseTest(ITestOutputHelper output) : Ev
         AgentFunctionToolResponse copy = VerifyEventSerialization(new AgentFunctionToolResponse("testagent", []));
 
         // Assert
-        Assert.Equal(copy.AgentName, copy.AgentName);
+        Assert.Equal("testagent", copy.AgentName);
         Assert.Empty(copy.FunctionResults);
     }
 

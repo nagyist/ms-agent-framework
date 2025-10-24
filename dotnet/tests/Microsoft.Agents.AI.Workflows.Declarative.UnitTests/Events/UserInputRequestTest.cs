@@ -18,7 +18,7 @@ public sealed class UserInputRequestTest(ITestOutputHelper output) : EventTest(o
         UserInputRequest copy = VerifyEventSerialization(new UserInputRequest("test agent", []));
 
         // Assert
-        Assert.Equal(copy.AgentName, copy.AgentName);
+        Assert.Equal("testagent", copy.AgentName);
         Assert.Empty(copy.InputRequests);
     }
 
