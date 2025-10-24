@@ -21,7 +21,7 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
 {
     public static class Steps
     {
-        public static string UserInput(string id) => $"{id}_{nameof(FunctionTool)}";
+        public static string UserInput(string id) => $"{id}_{nameof(UserInput)}";
         public static string FunctionTool(string id) => $"{id}_{nameof(FunctionTool)}";
         public static string Resume(string id) => $"{id}_{nameof(Resume)}";
     }
