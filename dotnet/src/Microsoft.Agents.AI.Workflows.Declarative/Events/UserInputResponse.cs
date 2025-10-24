@@ -34,19 +34,19 @@ public sealed class UserInputResponse
     /// Ensures that all requests have a corresponding result.
     /// </summary>
     /// <param name="inputRequest">The input request.</param>
-    /// <param name="inputReponses">On or more responses</param>
+    /// <param name="inputResponses">On or more responses</param>
     /// <returns>An <see cref="UserInputResponse"/> that can be provided to the workflow.</returns>
     /// <exception cref="DeclarativeActionException">Not all <see cref="AgentFunctionToolRequest.FunctionCalls"/> have a corresponding <see cref="FunctionResultContent"/>.</exception>
-    public static UserInputResponse Create(UserInputRequest inputRequest, params IEnumerable<UserInputResponseContent> inputReponses)
+    public static UserInputResponse Create(UserInputRequest inputRequest, params IEnumerable<UserInputResponseContent> inputResponses)
     {
         HashSet<string> callIds = [.. inputRequest.InputRequests.OfType<UserInputRequestContent>().Select(call => call.Id)];
-        HashSet<string> resultIds = [.. inputReponses.Select(call => call.Id)];
+        HashSet<string> resultIds = [.. inputResponses.Select(call => call.Id)];
 
         if (!callIds.SetEquals(resultIds))
         {
             throw new DeclarativeActionException($"Missing responses for for: {string.Join(",", callIds.Except(resultIds))}");
         }
 
-        return new UserInputResponse(inputRequest.AgentName, [.. inputReponses]);
+        return new UserInputResponse(inputRequest.AgentName, [.. inputResponses]);
     }
 }
