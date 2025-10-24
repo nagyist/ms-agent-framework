@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -64,11 +65,19 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
         if (string.IsNullOrEmpty(agentResponse.Text))
         {
             // Identify function calls that have no associated result.
-            List<FunctionCallContent> functionCalls = this.GetOrphanedFunctionCalls(agentResponse);
-            isComplete = functionCalls.Count == 0;
-
-            if (!isComplete)
+            List<UserInputResponseContent> toolApprovals = GetToolApprovalRequests(agentResponse);
+            if (toolApprovals.Count > 0)
             {
+                isComplete = false;
+                AgentToolApprovalRequest approvalRequest = new(agentName, toolApprovals);
+                await context.SendMessageAsync(approvalRequest, targetId: null, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Identify function calls that have no associated result.
+            List<FunctionCallContent> functionCalls = GetOrphanedFunctionCalls(agentResponse);
+            if (functionCalls.Count > 0)
+            {
+                isComplete = false;
                 AgentToolRequest toolRequest = new(agentName, functionCalls);
                 await context.SendMessageAsync(toolRequest, targetId: null, cancellationToken).ConfigureAwait(false);
             }
@@ -95,7 +104,12 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
         return userInput?.ToChatMessages();
     }
 
-    private List<FunctionCallContent> GetOrphanedFunctionCalls(AgentRunResponse agentResponse)
+    private static List<UserInputResponseContent> GetToolApprovalRequests(AgentRunResponse agentResponse)
+    {
+        throw new NotImplementedException();
+    }
+
+    private static List<FunctionCallContent> GetOrphanedFunctionCalls(AgentRunResponse agentResponse)
     {
         HashSet<string> functionResultIds =
             [.. agentResponse.Messages

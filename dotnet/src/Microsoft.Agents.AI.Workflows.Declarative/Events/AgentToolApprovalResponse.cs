@@ -7,9 +7,9 @@ using Microsoft.Extensions.AI;
 namespace Microsoft.Agents.AI.Workflows.Declarative.Events;
 
 /// <summary>
-/// Represents a request for user input.
+/// Represents a tool approval response.
 /// </summary>
-public sealed class AgentToolRequest
+public sealed class AgentToolApprovalResponse
 {
     /// <summary>
     /// The name of the agent associated with the tool request.
@@ -17,14 +17,17 @@ public sealed class AgentToolRequest
     public string AgentName { get; }
 
     /// <summary>
-    /// A list of tool requests.
+    /// A list of approval responses.
     /// </summary>
-    public IList<FunctionCallContent> Approvals { get; }
+    public IList<FunctionResultContent> ApprovalResponses { get; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InputResponse"/> class.
+    /// </summary>
     [JsonConstructor]
-    internal AgentToolRequest(string agentName, IList<FunctionCallContent>? functionCalls = null)
+    internal AgentToolApprovalResponse(string agentName, IList<FunctionResultContent> approvalResponses)
     {
         this.AgentName = agentName;
-        this.FunctionCalls = functionCalls ?? [];
+        this.ApprovalResponses = approvalResponses;
     }
 }
