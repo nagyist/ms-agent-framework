@@ -1,6 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -22,12 +21,16 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
 {
     public static class Steps
     {
-        public static string Input(string id) => $"{id}_{nameof(Input)}";
+        public static string UserInput(string id) => $"{id}_{nameof(FunctionTool)}";
+        public static string FunctionTool(string id) => $"{id}_{nameof(FunctionTool)}";
         public static string Resume(string id) => $"{id}_{nameof(Resume)}";
     }
 
-    // Input is requested by a message other than ActionExecutorResult.
-    public static bool RequiresInput(object? message) => message is not ActionExecutorResult;
+    public static bool RequiresFunctionCall(object? message) => message is AgentFunctionToolRequest;
+
+    public static bool RequiresUserInput(object? message) => message is UserInputRequest;
+
+    public static bool RequiresNothing(object? message) => message is ActionExecutorResult;
 
     private AzureAgentUsage AgentUsage => Throw.IfNull(this.Model.Agent, $"{nameof(this.Model)}.{nameof(this.Model.Agent)}");
     private AzureAgentInput? AgentInput => this.Model.Input;
@@ -43,7 +46,7 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
         return default;
     }
 
-    public ValueTask ResumeAsync(IWorkflowContext context, AgentToolResponse message, CancellationToken cancellationToken) =>
+    public ValueTask ResumeAsync(IWorkflowContext context, AgentFunctionToolResponse message, CancellationToken cancellationToken) =>
         this.InvokeAgentAsync(context, [message.FunctionResults.ToChatMessage()], cancellationToken);
 
     public async ValueTask CompleteAsync(IWorkflowContext context, ActionExecutorResult message, CancellationToken cancellationToken)
@@ -65,11 +68,11 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
         if (string.IsNullOrEmpty(agentResponse.Text))
         {
             // Identify function calls that have no associated result.
-            List<UserInputResponseContent> toolApprovals = GetToolApprovalRequests(agentResponse);
-            if (toolApprovals.Count > 0)
+            List<UserInputRequestContent> inputRequests = GetUserInputRequests(agentResponse);
+            if (inputRequests.Count > 0)
             {
                 isComplete = false;
-                AgentToolApprovalRequest approvalRequest = new(agentName, toolApprovals);
+                UserInputRequest approvalRequest = new(agentName, inputRequests.OfType<AIContent>().ToArray());
                 await context.SendMessageAsync(approvalRequest, targetId: null, cancellationToken).ConfigureAwait(false);
             }
 
@@ -78,7 +81,7 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
             if (functionCalls.Count > 0)
             {
                 isComplete = false;
-                AgentToolRequest toolRequest = new(agentName, functionCalls);
+                AgentFunctionToolRequest toolRequest = new(agentName, functionCalls);
                 await context.SendMessageAsync(toolRequest, targetId: null, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -104,11 +107,6 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
         return userInput?.ToChatMessages();
     }
 
-    private static List<UserInputResponseContent> GetToolApprovalRequests(AgentRunResponse agentResponse)
-    {
-        throw new NotImplementedException();
-    }
-
     private static List<FunctionCallContent> GetOrphanedFunctionCalls(AgentRunResponse agentResponse)
     {
         HashSet<string> functionResultIds =
@@ -130,6 +128,9 @@ internal sealed class InvokeAzureAgentExecutor(InvokeAzureAgent model, WorkflowA
 
         return functionCalls;
     }
+
+    private static List<UserInputRequestContent> GetUserInputRequests(AgentRunResponse agentResponse) =>
+        agentResponse.Messages.SelectMany(m => m.Contents.OfType<UserInputRequestContent>()).ToList();
 
     private string? GetConversationId()
     {
