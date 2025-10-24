@@ -22,11 +22,8 @@ public sealed class AgentFunctionToolResponse
     /// </summary>
     public IList<FunctionResultContent> FunctionResults { get; }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AgentFunctionToolResponse"/> class.
-    /// </summary>
     [JsonConstructor]
-    public AgentFunctionToolResponse(string agentName, IList<FunctionResultContent> functionResults)
+    internal AgentFunctionToolResponse(string agentName, IList<FunctionResultContent> functionResults)
     {
         this.AgentName = agentName;
         this.FunctionResults = functionResults;

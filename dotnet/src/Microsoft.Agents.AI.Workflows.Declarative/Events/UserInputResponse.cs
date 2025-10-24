@@ -44,7 +44,7 @@ public sealed class UserInputResponse
 
         if (!callIds.SetEquals(resultIds))
         {
-            throw new DeclarativeActionException($"Missing responses for for: {string.Join(",", callIds.Except(resultIds))}");
+            throw new DeclarativeActionException($"Missing responses for: {string.Join(",", callIds.Except(resultIds))}");
         }
 
         return new UserInputResponse(inputRequest.AgentName, [.. inputResponses]);
