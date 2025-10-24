@@ -388,7 +388,7 @@ internal sealed class Program
     }
 
     /// <summary>
-    /// Handle a requests for user input for mcp and function tool approval.
+    /// Handle request for user input for mcp and function tool approval.
     /// </summary>
     private static UserInputResponse HandleUserInputRequest(UserInputRequest request)
     {
