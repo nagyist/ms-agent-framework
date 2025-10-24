@@ -22,9 +22,9 @@ public sealed class AgentToolApprovalRequest
     public IList<UserInputResponseContent> ApprovalRequests { get; }
 
     [JsonConstructor]
-    internal AgentToolApprovalRequest(string agentName, IList<UserInputResponseContent>? approvalRequests = null)
+    internal AgentToolApprovalRequest(string agentName, IList<UserInputResponseContent> approvalRequests)
     {
         this.AgentName = agentName;
-        this.ApprovalRequests = approvalRequests ?? [];
+        this.ApprovalRequests = approvalRequests;
     }
 }
