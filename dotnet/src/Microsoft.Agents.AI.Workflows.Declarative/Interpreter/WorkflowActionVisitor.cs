@@ -324,7 +324,7 @@ internal sealed class WorkflowActionVisitor : DialogActionVisitor
         this._workflowModel.AddLink(action.Id, functionCallingPort.Id, InvokeAzureAgentExecutor.RequiresFunctionCall);
 
         // Define request-port for user input, such as: mcp tool & function tool approval
-        string userInputPortId = InvokeAzureAgentExecutor.Steps.FunctionTool(action.Id);
+        string userInputPortId = InvokeAzureAgentExecutor.Steps.UserInput(action.Id);
         RequestPortAction userInputPort = new(RequestPort.Create<UserInputRequest, UserInputResponse>(userInputPortId));
         this._workflowModel.AddNode(userInputPort, action.ParentId);
         this._workflowModel.AddLink(action.Id, userInputPortId, InvokeAzureAgentExecutor.RequiresUserInput);
