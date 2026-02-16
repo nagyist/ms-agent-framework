@@ -1,30 +1,23 @@
 # Copyright (c) Microsoft. All rights reserved.
 
-"""AG-UI integration namespace for optional Agent Framework connectors.
+"""Amazon Bedrock integration namespace for optional Agent Framework connectors.
 
 This module lazily re-exports objects from:
-- ``agent-framework-ag-ui``
+- ``agent-framework-bedrock``
 
-Supported classes and functions:
-- AgentFrameworkAgent
-- AGUIChatClient
-- AGUIEventConverter
-- AGUIHttpService
-- add_agent_framework_fastapi_endpoint
+Supported classes:
+- BedrockChatClient
+- BedrockChatOptions
+- BedrockGuardrailConfig
+- BedrockSettings
 """
 
 import importlib
 from typing import Any
 
-IMPORT_PATH = "agent_framework_ag_ui"
-PACKAGE_NAME = "agent-framework-ag-ui"
-_IMPORTS = [
-    "AgentFrameworkAgent",
-    "add_agent_framework_fastapi_endpoint",
-    "AGUIChatClient",
-    "AGUIEventConverter",
-    "AGUIHttpService",
-]
+IMPORT_PATH = "agent_framework_bedrock"
+PACKAGE_NAME = "agent-framework-bedrock"
+_IMPORTS = ["BedrockChatClient", "BedrockChatOptions", "BedrockGuardrailConfig", "BedrockSettings"]
 
 
 def __getattr__(name: str) -> Any:
