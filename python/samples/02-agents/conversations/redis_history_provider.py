@@ -7,6 +7,10 @@ from uuid import uuid4
 from agent_framework import AgentSession
 from agent_framework.openai import OpenAIChatClient
 from agent_framework.redis import RedisHistoryProvider
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 """
 Redis History Provider Session Example
@@ -15,6 +19,7 @@ This sample demonstrates how to use Redis as a history provider for session
 management, enabling persistent conversation history storage across sessions
 with Redis as the backend data store.
 """
+
 
 # Default Redis URL for local Redis Stack.
 # Override via the REDIS_URL environment variable for remote or authenticated instances.
