@@ -22,6 +22,7 @@ from agent_framework_durabletask import (
 
 from agent_framework.azure._assistants_client import AzureOpenAIAssistantsClient
 from agent_framework.azure._chat_client import AzureOpenAIChatClient
+from agent_framework.azure._embedding_client import AzureOpenAIEmbeddingClient
 from agent_framework.azure._entra_id_authentication import AzureCredentialTypes, AzureTokenProvider
 from agent_framework.azure._responses_client import AzureOpenAIResponsesClient
 from agent_framework.azure._shared import AzureOpenAISettings
@@ -41,6 +42,7 @@ __all__ = [
     "AzureCredentialTypes",
     "AzureOpenAIAssistantsClient",
     "AzureOpenAIChatClient",
+    "AzureOpenAIEmbeddingClient",
     "AzureOpenAIResponsesClient",
     "AzureOpenAISettings",
     "AzureTokenProvider",
